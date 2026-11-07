@@ -1,0 +1,37 @@
+rules_version = '2';
+service cloud.firestore {
+ match /databases/{database}/documents {
+  function signed(){return request.auth!=null;}
+  function active(){return signed() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status=='active';}
+  function admin(){return active() && request.auth.token.role=='admin';}
+  function owner(uid){return active() && request.auth.uid==uid;}
+  match /services/{id} {
+   allow read: if resource.data.active==true || admin();
+   allow create,update: if admin() && request.resource.data.name is string && request.resource.data.name.size()>0 && request.resource.data.price is number && request.resource.data.price>0 && request.resource.data.unit in ['giờ','gói'] && request.resource.data.duration is int && request.resource.data.duration>=1 && request.resource.data.duration<=8 && request.resource.data.active is bool;
+   allow delete: if false;
+  }
+  match /users/{uid} {
+   allow read: if owner(uid)||admin();
+   allow update: if owner(uid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','phone','avatarUrl']) && request.resource.data.name is string && request.resource.data.phone is string;
+   allow create,delete: if false;
+   match /fcmTokens/{tokenId} {
+    allow read,delete: if owner(uid);
+    allow create,update: if owner(uid) && request.resource.data.keys().hasOnly(['token','createdAt']) && request.resource.data.token is string;
+   }
+  }
+  match /worker_profiles/{uid} {
+   allow read: if resource.data.approval=='approved'||owner(uid)||admin();
+   allow create: if owner(uid) && request.auth.token.role=='worker' && request.resource.data.keys().hasOnly(['name','skills','area','experience','bio','approval','reason']) && request.resource.data.approval=='pending' && request.resource.data.reason=='';
+   allow update: if owner(uid) && request.auth.token.role=='worker' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','skills','area','experience','bio','approval','reason']) && request.resource.data.approval=='pending' && request.resource.data.reason=='';
+   allow delete: if false;
+  }
+  match /addresses/{id} {allow read: if owner(resource.data.userId)||admin();allow write: if false;}
+  match /orders/{id} {allow read: if admin()||owner(resource.data.customerId)||owner(resource.data.workerId);allow write: if false;}
+  match /reviews/{id} {allow read: if admin()||owner(resource.data.customerId)||owner(resource.data.workerId);allow write: if false;}
+  match /notifications/{id} {
+   allow read: if owner(resource.data.userId)||admin();
+   allow update: if owner(resource.data.userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']) && request.resource.data.read==true;
+   allow create,delete: if false;
+  }
+ }
+}

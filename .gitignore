@@ -1,0 +1,11 @@
+.dart_tool/
+.packages
+build/
+.flutter-plugins*
+.idea/
+*.iml
+.env*
+*-adminsdk-*.json
+service-account*.json
+functions/node_modules/
+firebase.local.json
