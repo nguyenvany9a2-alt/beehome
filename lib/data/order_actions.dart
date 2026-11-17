@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import 'bee_store.dart';
 
 /// Các hàm xử lý đơn hàng (phần của Hào).
@@ -58,6 +60,69 @@ extension OrderActions on BeeStore {
       'createdAt': DateTime.now().toIso8601String(),
     });
     return id;
+  }
+
+  /// Khách hủy đơn: chỉ khi chưa có người nhận.
+  Future<void> cancelOrder(String id) => _changeOrder(id, (o) {
+    if (o['customerId'] != uid) {
+      throw StateError('Bạn chỉ hủy được đơn của mình.');
+    }
+    if (o['status'] != 'pending') {
+      throw StateError('Chỉ hủy được đơn chưa có người nhận.');
+    }
+  }, {'status': 'cancelled'});
+
+  /// Người giúp việc nhận đơn: không cho 2 người nhận trùng.
+  Future<void> acceptOrder(String id) => _changeOrder(id, (o) {
+    if (role != 'worker') {
+      throw StateError('Chỉ người giúp việc được nhận đơn.');
+    }
+    if (find('worker_profiles', uid)?['approval'] != 'approved') {
+      throw StateError('Hồ sơ của bạn chưa được duyệt nên chưa thể nhận đơn.');
+    }
+    if (o['status'] != 'pending' || o['workerId'] != null) {
+      throw StateError('Đơn này đã có người nhận.');
+    }
+  }, {'workerId': uid, 'workerName': profile['name'], 'status': 'accepted'});
+
+  /// Người giúp việc bắt đầu làm.
+  Future<void> startOrder(String id) => _changeOrder(id, (o) {
+    if (o['workerId'] != uid || o['status'] != 'accepted') {
+      throw StateError('Chỉ bắt đầu được đơn bạn đã nhận.');
+    }
+  }, {'status': 'working'});
+
+  /// Người giúp việc hoàn thành, đồng thời ghi nhận đã thu tiền mặt (COD).
+  Future<void> completeOrder(String id) => _changeOrder(id, (o) {
+    if (o['workerId'] != uid || o['status'] != 'working') {
+      throw StateError('Chỉ hoàn thành được đơn đang làm.');
+    }
+  }, {'status': 'completed', 'paymentStatus': 'paid'});
+
+  /// Hàm phụ: đọc đơn, kiểm tra điều kiện, rồi cập nhật.
+  /// Firebase thật thì dùng transaction để chống bấm trùng.
+  Future<void> _changeOrder(
+    String id,
+    void Function(RecordData order) check,
+    RecordData changes,
+  ) async {
+    final update = {...changes, 'updatedAt': DateTime.now().toIso8601String()};
+    if (live) {
+      final db = FirebaseFirestore.instance;
+      final ref = db.collection('orders').doc(id);
+      await db.runTransaction((tx) async {
+        final snap = await tx.get(ref);
+        if (!snap.exists) throw StateError('Không tìm thấy đơn.');
+        check({...snap.data()!, 'id': snap.id});
+        tx.update(ref, update);
+      });
+      await reload();
+    } else {
+      final order = find('orders', id);
+      if (order == null) throw StateError('Không tìm thấy đơn.');
+      check(order);
+      await save('orders', {'id': id, ...update});
+    }
   }
 }
 

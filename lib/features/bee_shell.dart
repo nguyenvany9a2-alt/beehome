@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-
+import 'booking/order_buttons.dart';
 import '../core/theme.dart';
 import '../data/bee_store.dart';
 import '../widgets/common.dart';
@@ -1447,7 +1447,8 @@ class _BeeShellState extends State<BeeShell> {
         .where(
           (o) =>
               (s.admin ||
-                  o[s.role == 'worker' ? 'workerId' : 'customerId'] == s.uid) &&
+                  o[s.role == 'worker' ? 'workerId' : 'customerId'] == s.uid ||
+                  (s.role == 'worker' && o['status'] == 'pending')) &&
               (orderFilter == 'Tất cả' || o['status'] == orderFilter) &&
               folded('${o['id']} ${o['serviceName']}').contains(folded(search)),
         )
@@ -1538,6 +1539,7 @@ class _BeeShellState extends State<BeeShell> {
                       onPressed: () => orderDetail(o),
                       child: const Text('Chi tiết'),
                     ),
+                    OrderButtons(store: s, order: o),
                     if (o['customerId'] == s.uid &&
                         o['status'] == 'completed' &&
                         s.find('reviews', o['id']) == null)
@@ -1712,7 +1714,9 @@ class _BeeShellState extends State<BeeShell> {
           ],
         ),
       ),
-    ).then((_) => text.dispose());
+    ).then(
+      (_) => Future.delayed(const Duration(milliseconds: 400), text.dispose),
+    );
   }
 
   Widget notifications() {
