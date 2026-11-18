@@ -3,6 +3,7 @@ import 'booking/order_buttons.dart';
 import '../core/theme.dart';
 import '../data/bee_store.dart';
 import '../widgets/common.dart';
+import 'auth/logout_button.dart';
 
 class BeeShell extends StatefulWidget {
   const BeeShell({super.key, required this.store, this.onBookingRequested});
@@ -180,6 +181,10 @@ class _BeeShellState extends State<BeeShell> {
                       if (wide) ...[
                         const SizedBox(width: 10),
                         Text(s.profile['name'] ?? 'Thành viên'),
+                      ],
+                      if (s.live) ...[
+                        const SizedBox(width: 8),
+                        LogoutButton(),
                       ],
                     ],
                   ),
