@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-
 import 'core/theme.dart';
 import 'data/bee_store.dart';
 import 'features/bee_shell.dart';
+import 'features/booking/booking_flow.dart';
+import 'features/auth/auth_gate.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,10 +20,17 @@ Future<void> main() async {
           authDomain: String.fromEnvironment('FIREBASE_AUTH_DOMAIN'),
         ),
       );
+      runApp(const AuthGate());
+      return;
     }
     final store = BeeStore(live: live);
     await store.init();
-    runApp(BeeHomeApp(store: store));
+    runApp(
+      BeeHomeApp(
+        store: store,
+        onBookingRequested: (draft) => startBooking(store, draft),
+      ),
+    );
   } catch (e) {
     runApp(
       MaterialApp(
@@ -61,6 +69,7 @@ class BeeHomeApp extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp(
     title: 'BeeHome · Chăm nhà gọn',
     debugShowCheckedModeBanner: false,
+    navigatorKey: bookingNavigatorKey,
     theme: beeTheme(),
     home: BeeShell(store: store, onBookingRequested: onBookingRequested),
   );
