@@ -4,6 +4,7 @@ import 'core/theme.dart';
 import 'data/bee_store.dart';
 import 'features/bee_shell.dart';
 import 'features/booking/booking_flow.dart';
+import 'features/auth/auth_gate.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,6 +20,8 @@ Future<void> main() async {
           authDomain: String.fromEnvironment('FIREBASE_AUTH_DOMAIN'),
         ),
       );
+      runApp(const AuthGate());
+      return;
     }
     final store = BeeStore(live: live);
     await store.init();

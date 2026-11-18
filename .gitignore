@@ -9,3 +9,4 @@ build/
 service-account*.json
 functions/node_modules/
 firebase.local.json
+flutter run -d chrome --dart-define-from-file=firebase.local.json
