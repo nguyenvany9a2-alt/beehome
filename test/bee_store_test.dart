@@ -2,13 +2,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:beehome/data/bee_store.dart';
 import 'package:beehome/core/theme.dart';
+import 'fixtures/bee_fixture.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late BeeStore s;
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
-    s = BeeStore();
+    s = FixtureStore();
     await s.init();
   });
   test('Tìm kiếm tiếng Việt không dấu', () {
@@ -23,7 +24,7 @@ void main() {
     await expectLater(s.review('BH1002', 5, ''), throwsStateError);
   });
   test('Không đánh giá đơn người khác', () async {
-    s.demoRole('worker');
+    s = FixtureStore(user: 'w1', accountRole: 'worker');
     await expectLater(s.review('BH1001', 5, ''), throwsStateError);
   });
   test('Không đánh giá ngoài khoảng điểm', () async {
@@ -41,7 +42,7 @@ void main() {
   });
   test('Thông báo đã đọc được lưu sau tải lại', () async {
     await s.markRead('n1');
-    final other = BeeStore();
+    final other = FixtureStore();
     await other.init();
     expect(other.find('notifications', 'n1')!['read'], true);
   });
