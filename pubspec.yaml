@@ -24,6 +24,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/saigon-living-room.webp
+    - assets/images/saigon-reading-corner.webp
     - assets/fonts/worksans/OFL.txt
     - assets/fonts/playfairdisplay/OFL.txt
   fonts:

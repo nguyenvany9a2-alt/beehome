@@ -9,7 +9,14 @@
   <title>BeeHome</title>
   <style>
     body { margin:0; background:#f7f6f1; color:#163c34; font-family:system-ui,sans-serif }
-    #startup { min-height:100vh; min-height:100svh; display:grid; align-content:center; justify-items:center; gap:10px }
+    #startup {
+      min-height:100vh; min-height:100svh; display:grid; place-items:center;
+      background:linear-gradient(#2d261714,#2d261714),url("assets/assets/images/saigon-living-room.webp") 60% 74%/cover no-repeat;
+    }
+    @media (max-width:699.98px) {
+      #startup { background-image:linear-gradient(#2d261714,#2d261714),url("assets/assets/images/saigon-reading-corner.webp"); background-position:65% 57% }
+    }
+    #startup .status { display:grid; gap:10px; justify-items:center; padding:22px 32px; border-radius:20px; background:#fffcf5ee }
     #startup strong { font-size:32px; letter-spacing:-1.4px }
     #startup span { font-size:14px; color:#52635b }
     .indicator { height:3px; width:76px; border-radius:8px; background:linear-gradient(90deg,#163c34,#f2c969,#163c34); background-size:200%; animation:pulse 1.3s linear infinite }
@@ -18,7 +25,7 @@
   </style>
 </head>
 <body>
-  <div id="startup" role="status"><strong>BeeHome</strong><div class="indicator"></div><span>Đang mở ứng dụng…</span></div>
+  <div id="startup" role="status"><div class="status"><strong>BeeHome</strong><div class="indicator"></div><span>Đang mở ứng dụng…</span></div></div>
   <script>window.addEventListener('flutter-first-frame', () => document.getElementById('startup')?.remove(), {once:true});</script>
   <script src="flutter_bootstrap.js" async></script>
 </body>

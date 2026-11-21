@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 import '../../core/locales.dart';
 import '../../widgets/common.dart';
+import '../../widgets/bee_backdrop.dart';
 import '../../data/bee_store.dart';
 import '../../main.dart';
 import '../booking/booking_flow.dart';
@@ -107,11 +108,12 @@ class _AuthGateState extends State<AuthGate> {
       localizationsDelegates: beeDelegates,
       debugShowCheckedModeBanner: false,
       theme: beeTheme(),
+      builder: buildBeeBackdrop,
       home: loading
           ? const Scaffold(
               body: Center(
                   child: Column(mainAxisSize: MainAxisSize.min, children: [
-              BeeBrand(),
+              ReadingSurface(child: BeeBrand()),
               SizedBox(height: 22),
               SizedBox(
                   width: 96,

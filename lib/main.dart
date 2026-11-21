@@ -8,6 +8,7 @@ import 'features/auth/auth_gate.dart';
 import 'features/bee_shell.dart';
 import 'features/booking/booking_flow.dart';
 import 'widgets/common.dart';
+import 'widgets/bee_backdrop.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -45,6 +46,7 @@ class StartupNotice extends StatelessWidget {
         title: 'BeeHome',
         debugShowCheckedModeBanner: false,
         theme: beeTheme(),
+        builder: buildBeeBackdrop,
         locale: beeLocale,
         supportedLocales: beeLocales,
         localizationsDelegates: beeDelegates,
@@ -56,7 +58,7 @@ class StartupNotice extends StatelessWidget {
           child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 480),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
-                const BeeBrand(),
+                const ReadingSurface(child: BeeBrand()),
                 const SizedBox(height: 24),
                 EmptyView(
                     connectionFailed
@@ -81,6 +83,7 @@ class BeeHomeApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         navigatorKey: bookingNavigatorKey,
         theme: beeTheme(),
+        builder: buildBeeBackdrop,
         locale: beeLocale,
         supportedLocales: beeLocales,
         localizationsDelegates: beeDelegates,

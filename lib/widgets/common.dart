@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
 
-const roomPhoto = 'assets/images/saigon-living-room.webp';
+import 'scroll_reveal.dart';
 
 class BeeBrand extends StatelessWidget {
   const BeeBrand({super.key, this.light = false});
@@ -30,19 +30,24 @@ class BeeBrand extends StatelessWidget {
 }
 
 class Panel extends StatelessWidget {
-  const Panel({super.key, required this.child, this.padding = 22});
+  const Panel(
+      {super.key, required this.child, this.padding = 22, this.reveal = false});
   final Widget child;
   final double padding;
+  final bool reveal;
   @override
-  Widget build(BuildContext context) => SizedBox(
-      width: double.infinity,
-      child: Material(
-          color: Colors.white,
-          clipBehavior: Clip.antiAlias,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-              side: const BorderSide(color: line)),
-          child: Padding(padding: EdgeInsets.all(padding), child: child)));
+  Widget build(BuildContext context) {
+    final panel = SizedBox(
+        width: double.infinity,
+        child: Material(
+            color: Colors.white,
+            clipBehavior: Clip.antiAlias,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: const BorderSide(color: line)),
+            child: Padding(padding: EdgeInsets.all(padding), child: child)));
+    return reveal ? ScrollReveal(child: panel) : panel;
+  }
 }
 
 class Tag extends StatelessWidget {

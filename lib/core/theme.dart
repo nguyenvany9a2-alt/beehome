@@ -36,7 +36,7 @@ ThemeData beeTheme() {
       borderRadius: BorderRadius.circular(14),
       borderSide: const BorderSide(color: line));
   return base.copyWith(
-    scaffoldBackgroundColor: cream,
+    scaffoldBackgroundColor: Colors.transparent,
     textTheme: text.copyWith(
       headlineLarge: display.copyWith(fontSize: 43),
       headlineMedium: display.copyWith(fontSize: 30),

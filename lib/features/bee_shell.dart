@@ -5,6 +5,7 @@ import 'services/service_catalog.dart';
 import '../core/theme.dart';
 import '../data/bee_store.dart';
 import '../widgets/common.dart';
+import '../widgets/bee_backdrop.dart';
 import 'auth/logout_button.dart';
 
 class BeeShell extends StatefulWidget {
@@ -246,22 +247,11 @@ class _BeeShellState extends State<BeeShell> {
                             child: ConstrainedBox(
                                 constraints:
                                     const BoxConstraints(maxWidth: 1160),
-                                child: TweenAnimationBuilder<double>(
+                                child: KeyedSubtree(
                                     key: ValueKey(page),
-                                    tween: Tween(
-                                        begin: MediaQuery.disableAnimationsOf(
-                                                context)
-                                            ? 1.0
-                                            : 0.0,
-                                        end: 1.0),
-                                    duration:
-                                        MediaQuery.disableAnimationsOf(context)
-                                            ? Duration.zero
-                                            : const Duration(milliseconds: 160),
-                                    curve: Curves.easeOut,
-                                    builder: (_, v, child) =>
-                                        Opacity(opacity: v, child: child),
-                                    child: content()))))),
+                                    child: page == 'services'
+                                        ? content()
+                                        : ReadingSurface(child: content())))))),
               ])),
             ])));
   }
@@ -367,8 +357,9 @@ class _BeeShellState extends State<BeeShell> {
           return Wrap(
             spacing: 18,
             runSpacing: 18,
-            children:
-                children.map((e) => SizedBox(width: w, child: e)).toList(),
+            children: children
+                .map((e) => SizedBox(key: e.key, width: w, child: e))
+                .toList(),
           );
         },
       );
@@ -724,6 +715,8 @@ class _BeeShellState extends State<BeeShell> {
             list
                 .map(
                   (a) => Panel(
+                    key: ValueKey(a['id']),
+                    reveal: true,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1006,6 +999,8 @@ class _BeeShellState extends State<BeeShell> {
             list
                 .map(
                   (w) => Panel(
+                    key: ValueKey(w['id']),
+                    reveal: true,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1164,6 +1159,7 @@ class _BeeShellState extends State<BeeShell> {
             key: ValueKey(o['id']),
             padding: const EdgeInsets.only(bottom: 12),
             child: Panel(
+                reveal: true,
                 padding: 18,
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1278,8 +1274,10 @@ class _BeeShellState extends State<BeeShell> {
           ...done.map((o) {
             final r = s.find('reviews', o['id']);
             return Padding(
+              key: ValueKey(o['id']),
               padding: const EdgeInsets.only(bottom: 16),
               child: Panel(
+                reveal: true,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1455,8 +1453,10 @@ class _BeeShellState extends State<BeeShell> {
         else
           ...list.map(
             (n) => Padding(
+              key: ValueKey(n['id']),
               padding: const EdgeInsets.only(bottom: 12),
               child: Panel(
+                reveal: true,
                 padding: 8,
                 child: ListTile(
                   leading: CircleAvatar(
@@ -1535,6 +1535,8 @@ class _BeeShellState extends State<BeeShell> {
           ]
               .map(
                 (x) => Panel(
+                  key: ValueKey(x.$1),
+                  reveal: true,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1665,8 +1667,10 @@ class _BeeShellState extends State<BeeShell> {
               icon: Icons.grid_view_outlined),
         ...list.map(
           (r) => Padding(
+            key: ValueKey(r['id']),
             padding: const EdgeInsets.only(bottom: 14),
             child: Panel(
+              reveal: true,
               padding: 18,
               child: Wrap(
                 spacing: 22,
@@ -1823,8 +1827,10 @@ class _BeeShellState extends State<BeeShell> {
               icon: Icons.people_outline),
         ...list.map(
           (u) => Padding(
+            key: ValueKey(u['id']),
             padding: const EdgeInsets.only(bottom: 12),
             child: Panel(
+              reveal: true,
               child: Wrap(
                 spacing: 20,
                 runSpacing: 12,

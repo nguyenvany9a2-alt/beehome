@@ -4,6 +4,8 @@ import '../../core/theme.dart';
 import '../../data/bee_store.dart';
 import '../../widgets/common.dart';
 import '../../widgets/home_cover.dart';
+import '../../widgets/bee_backdrop.dart';
+import '../../widgets/scroll_reveal.dart';
 
 class ServiceCatalog extends StatefulWidget {
   const ServiceCatalog(
@@ -321,89 +323,99 @@ class _ServiceCatalogState extends State<ServiceCatalog> {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       HomeCover(onSearch: all.isEmpty ? null : searchServices),
       const SizedBox(height: 22),
-      Text('Danh mục dịch vụ',
-          style: Theme.of(context).textTheme.headlineMedium),
-      const SizedBox(height: 12),
-      if (all.isEmpty)
-        EmptyView(
-            'Chưa có dịch vụ đang mở',
-            widget.onManage == null
-                ? 'Dịch vụ sẽ xuất hiện tại đây khi BeeHome mở nhận đặt lịch.'
-                : 'Thêm hoặc mở một dịch vụ trong mục Quản lý dịch vụ.',
-            icon: Icons.spa_outlined,
-            action: widget.onManage == null
-                ? null
-                : OutlinedButton(
-                    onPressed: widget.onManage,
-                    child: const Text('Quản lý dịch vụ')))
-      else ...[
-        Row(key: searchAnchor, children: [
-          Expanded(
-              child: TextField(
-                  controller: search,
-                  focusNode: focus,
-                  textInputAction: TextInputAction.search,
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(
-                      hintText: 'Tìm tên dịch vụ',
-                      prefixIcon: const Icon(Icons.search),
-                      suffixIcon: search.text.isEmpty
-                          ? null
-                          : IconButton(
-                              tooltip: 'Xóa từ khóa',
-                              icon: const Icon(Icons.close),
-                              onPressed: () => setState(search.clear))))),
-          const SizedBox(width: 8),
-          IconButton.filledTonal(
-              tooltip: 'Bộ lọc',
-              onPressed: () => filters(all),
-              style: IconButton.styleFrom(
-                  backgroundColor: advanced ? forest : leaf,
-                  foregroundColor: advanced ? Colors.white : ink,
-                  minimumSize: const Size(50, 50),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14))),
-              icon: const Icon(Icons.tune_rounded)),
-        ]),
-        if (cats.isNotEmpty)
-          Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: Wrap(spacing: 7, runSpacing: 2, children: [
-                for (final c in ['', ...cats])
-                  ChoiceChip(
-                      showCheckmark: false,
-                      label: Text(c.isEmpty ? 'Tất cả' : c),
-                      selected: c == category,
-                      onSelected: (_) => setState(() => category = c))
-              ])),
-        const SizedBox(height: 12),
-        Wrap(
-            spacing: 9,
-            runSpacing: 4,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Semantics(
-                  liveRegion: true,
-                  child: Text('${list.length} dịch vụ',
-                      style: const TextStyle(color: muted))),
-              if (tasks.isNotEmpty)
-                TextButton.icon(
-                    onPressed: () => chooseTask(tasks),
-                    icon: const Icon(Icons.checklist_rounded, size: 18),
-                    label: Text(taskFilter.isEmpty
-                        ? 'Chọn theo công việc'
-                        : taskFilter)),
-              if (advanced && unit.isNotEmpty) Tag('Theo $unit'),
-              if (advanced && maxPrice != null) Tag('Đến ${money(maxPrice!)}'),
-              if (filtered)
-                TextButton(onPressed: clear, child: const Text('Xóa bộ lọc')),
-              if (selected.isNotEmpty)
-                OutlinedButton.icon(
-                    onPressed: () => compare(all),
-                    icon: const Icon(Icons.compare_arrows),
-                    label: Text('So sánh (${selected.length}/3)')),
-            ]),
-        const SizedBox(height: 10),
+      ScrollReveal(
+          child: ReadingSurface(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+            Text('Danh mục dịch vụ',
+                style: Theme.of(context).textTheme.headlineMedium),
+            const SizedBox(height: 12),
+            if (all.isEmpty)
+              EmptyView(
+                  'Chưa có dịch vụ đang mở',
+                  widget.onManage == null
+                      ? 'Dịch vụ sẽ xuất hiện tại đây khi BeeHome mở nhận đặt lịch.'
+                      : 'Thêm hoặc mở một dịch vụ trong mục Quản lý dịch vụ.',
+                  icon: Icons.spa_outlined,
+                  action: widget.onManage == null
+                      ? null
+                      : OutlinedButton(
+                          onPressed: widget.onManage,
+                          child: const Text('Quản lý dịch vụ')))
+            else ...[
+              Row(key: searchAnchor, children: [
+                Expanded(
+                    child: TextField(
+                        controller: search,
+                        focusNode: focus,
+                        textInputAction: TextInputAction.search,
+                        onChanged: (_) => setState(() {}),
+                        decoration: InputDecoration(
+                            hintText: 'Tìm tên dịch vụ',
+                            prefixIcon: const Icon(Icons.search),
+                            suffixIcon: search.text.isEmpty
+                                ? null
+                                : IconButton(
+                                    tooltip: 'Xóa từ khóa',
+                                    icon: const Icon(Icons.close),
+                                    onPressed: () => setState(search.clear))))),
+                const SizedBox(width: 8),
+                IconButton.filledTonal(
+                    tooltip: 'Bộ lọc',
+                    onPressed: () => filters(all),
+                    style: IconButton.styleFrom(
+                        backgroundColor: advanced ? forest : leaf,
+                        foregroundColor: advanced ? Colors.white : ink,
+                        minimumSize: const Size(50, 50),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14))),
+                    icon: const Icon(Icons.tune_rounded)),
+              ]),
+              if (cats.isNotEmpty)
+                Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Wrap(spacing: 7, runSpacing: 2, children: [
+                      for (final c in ['', ...cats])
+                        ChoiceChip(
+                            showCheckmark: false,
+                            label: Text(c.isEmpty ? 'Tất cả' : c),
+                            selected: c == category,
+                            onSelected: (_) => setState(() => category = c))
+                    ])),
+              const SizedBox(height: 12),
+              Wrap(
+                  spacing: 9,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Semantics(
+                        liveRegion: true,
+                        child: Text('${list.length} dịch vụ',
+                            style: const TextStyle(color: muted))),
+                    if (tasks.isNotEmpty)
+                      TextButton.icon(
+                          onPressed: () => chooseTask(tasks),
+                          icon: const Icon(Icons.checklist_rounded, size: 18),
+                          label: Text(taskFilter.isEmpty
+                              ? 'Chọn theo công việc'
+                              : taskFilter)),
+                    if (advanced && unit.isNotEmpty) Tag('Theo $unit'),
+                    if (advanced && maxPrice != null)
+                      Tag('Đến ${money(maxPrice!)}'),
+                    if (filtered)
+                      TextButton(
+                          onPressed: clear, child: const Text('Xóa bộ lọc')),
+                    if (selected.isNotEmpty)
+                      OutlinedButton.icon(
+                          onPressed: () => compare(all),
+                          icon: const Icon(Icons.compare_arrows),
+                          label: Text('So sánh (${selected.length}/3)')),
+                  ]),
+            ],
+          ]))),
+      if (all.isNotEmpty) ...[
+        const SizedBox(height: 14),
         if (list.isEmpty)
           EmptyView('Chưa tìm thấy dịch vụ',
               'Thử từ khóa ngắn hơn hoặc mở rộng bộ lọc.',
@@ -418,12 +430,14 @@ class _ServiceCatalogState extends State<ServiceCatalog> {
             return Wrap(spacing: 14, runSpacing: 14, children: [
               for (final r in list)
                 SizedBox(
+                    key: ValueKey(r['id']),
                     width: width,
-                    child: _ServiceCard(
-                        record: r,
-                        selected: selected.contains(r['id']),
-                        onCompare: () => toggle(r['id']),
-                        onOpen: () => widget.onDetails(r)))
+                    child: ScrollReveal(
+                        child: _ServiceCard(
+                            record: r,
+                            selected: selected.contains(r['id']),
+                            onCompare: () => toggle(r['id']),
+                            onOpen: () => widget.onDetails(r))))
             ]);
           }),
       ],

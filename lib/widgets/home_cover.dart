@@ -19,13 +19,6 @@ class HomeCover extends StatelessWidget {
                 constraints:
                     BoxConstraints(minHeight: h, minWidth: box.maxWidth),
                 child: Stack(children: [
-                  Positioned.fill(
-                      child: Image.asset(roomPhoto,
-                          fit: BoxFit.cover,
-                          alignment: signIn
-                              ? const Alignment(.35, .35)
-                              : const Alignment(.4, .38),
-                          excludeFromSemantics: true)),
                   const Positioned.fill(
                       child: DecoratedBox(
                           decoration: BoxDecoration(
