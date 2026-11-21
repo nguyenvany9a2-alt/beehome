@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../data/bee_store.dart';
+import '../../core/theme.dart';
+import '../../widgets/common.dart';
 import '../../data/order_actions.dart';
 
 /// "Chìa khóa" để mở hộp thoại từ bên ngoài BeeShell.
@@ -28,18 +30,25 @@ Future<void> startBooking(BeeStore store, Map<String, dynamic> draft) async {
   final time = await showTimePicker(
     context: context,
     initialTime: const TimeOfDay(hour: 8, minute: 0),
-    helpText: 'Chọn giờ bắt đầu (7:00 - 19:00)',
+    helpText: 'Chọn giờ bắt đầu (07:00 – 19:59)',
   );
   if (time == null || !context.mounted) return;
   if (time.hour < 7 || time.hour > 19) {
-    _toast(context, 'Vui lòng chọn giờ bắt đầu từ 7:00 đến 19:00.');
+    _toast(context, 'Vui lòng chọn giờ bắt đầu từ 07:00 đến 19:59.');
     return;
   }
   final when = DateTime(day.year, day.month, day.day, time.hour, time.minute);
 
   // 3. Hiện bảng xác nhận
-  final service = store.find('services', draft['serviceId'])!;
-  final address = store.find('addresses', draft['addressId'])!;
+  final service = store.find('services', draft['serviceId']);
+  final address = store.find('addresses', draft['addressId']);
+  if (service == null ||
+      address == null ||
+      service['active'] != true ||
+      service['price'] is! num) {
+    _toast(context, 'Dịch vụ hoặc địa chỉ đã thay đổi. Vui lòng chọn lại.');
+    return;
+  }
   final byHour = service['unit'] == 'giờ';
   final hours = draft['duration'] as int;
   final total = (service['price'] as num) * (byHour ? hours : 1);
@@ -47,24 +56,34 @@ Future<void> startBooking(BeeStore store, Map<String, dynamic> draft) async {
   final ok = await showDialog<bool>(
     context: context,
     builder: (c) => AlertDialog(
-      title: const Text('Xác nhận đặt dịch vụ'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Dịch vụ: ${service['name']}'),
-          Text('Ngày: ${day.day}/${day.month}/${day.year}'),
-          Text('Giờ bắt đầu: ${time.format(c)}'),
-          if (byHour) Text('Thời lượng: $hours giờ'),
-          Text('Địa chỉ: ${address['detail']}'),
-          const SizedBox(height: 12),
-          Text(
-            'Tổng tiền: ${total.toInt()}đ',
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-          ),
-          const Text('Thanh toán: Tiền mặt khi hoàn thành (COD)'),
-        ],
-      ),
+      scrollable: true,
+      title: const Text('Xác nhận lịch đặt'),
+      content: SizedBox(
+          width: 380,
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('${service['name']}',
+                    style: Theme.of(c).textTheme.titleLarge),
+                const SizedBox(height: 10),
+                InfoLine(Icons.calendar_month_outlined, 'Ngày và giờ làm',
+                    '${day.day}/${day.month}/${day.year} · ${time.format(c)}'),
+                if (byHour)
+                  InfoLine(Icons.schedule, 'Thời lượng', '$hours giờ'),
+                InfoLine(
+                    Icons.location_on_outlined,
+                    'Địa chỉ',
+                    [address['detail'], address['area']]
+                        .whereType<String>()
+                        .where((s) => s.trim().isNotEmpty)
+                        .join(', ')),
+                const Divider(),
+                InfoLine(
+                    Icons.payments_outlined, 'Tổng thanh toán', money(total)),
+                const Text('Thanh toán tiền mặt khi hoàn thành.',
+                    style: TextStyle(color: muted, fontSize: 13)),
+              ])),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(c, false),
