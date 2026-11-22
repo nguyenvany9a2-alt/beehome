@@ -1,3 +1,5 @@
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
@@ -32,6 +34,12 @@ Future<void> main() async {
   }
   try {
     await Firebase.initializeApp(options: options);
+    if (const bool.fromEnvironment('BEE_EMULATORS')) {
+      const host = String.fromEnvironment('BEE_EMULATOR_HOST',
+          defaultValue: '127.0.0.1');
+      await FirebaseAuth.instance.useAuthEmulator(host, 9099);
+      FirebaseFirestore.instance.useFirestoreEmulator(host, 8080);
+    }
     runApp(const AuthGate());
   } catch (_) {
     runApp(const StartupNotice(connectionFailed: true));
@@ -78,18 +86,21 @@ class BeeHomeApp extends StatelessWidget {
   final BeeStore store;
   final ValueChanged<Map<String, dynamic>>? onBookingRequested;
   @override
-  Widget build(BuildContext context) => MaterialApp(
-        title: 'BeeHome',
-        debugShowCheckedModeBanner: false,
-        navigatorKey: bookingNavigatorKey,
-        theme: beeTheme(),
-        builder: buildBeeBackdrop,
-        locale: beeLocale,
-        supportedLocales: beeLocales,
-        localizationsDelegates: beeDelegates,
-        home: BeeShell(
-            store: store,
-            onBookingRequested:
-                onBookingRequested ?? (draft) => startBooking(store, draft)),
-      );
+  Widget build(BuildContext context) => ListenableBuilder(
+      listenable: store,
+      builder: (context, _) => MaterialApp(
+            title: 'BeeHome',
+            debugShowCheckedModeBanner: false,
+            navigatorKey: bookingNavigatorKey,
+            theme: beeTheme(),
+            builder: (c, child) => buildBeeBackdrop(
+                c, child, store.profile['appearance'] as Map? ?? const {}),
+            locale: beeLocale,
+            supportedLocales: beeLocales,
+            localizationsDelegates: beeDelegates,
+            home: BeeShell(
+                store: store,
+                onBookingRequested: onBookingRequested ??
+                    (draft) => startBooking(store, draft)),
+          ));
 }

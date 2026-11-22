@@ -40,7 +40,7 @@ class Panel extends StatelessWidget {
     final panel = SizedBox(
         width: double.infinity,
         child: Material(
-            color: Colors.white,
+            color: const Color(0xDAFFFEFA),
             clipBehavior: Clip.antiAlias,
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),

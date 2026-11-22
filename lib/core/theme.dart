@@ -121,3 +121,14 @@ String folded(String s) {
   });
   return s;
 }
+
+IconData serviceGlyph(dynamic key) => switch (key) {
+      'laundry' => Icons.local_laundry_service_outlined,
+      'sparkles' => Icons.auto_awesome,
+      'kitchen' => Icons.soup_kitchen_outlined,
+      'bath' => Icons.bathtub_outlined,
+      'glass' => Icons.window_outlined,
+      'balcony' => Icons.balcony_outlined,
+      'iron' => Icons.iron_outlined,
+      _ => Icons.chair_outlined,
+    };

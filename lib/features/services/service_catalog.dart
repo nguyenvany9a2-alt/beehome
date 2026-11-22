@@ -460,11 +460,7 @@ class _ServiceCard extends StatelessWidget {
     final r = record;
     final image = '${r['imageUrl'] ?? ''}'.trim();
     final label = '${r['name'] ?? 'Dịch vụ'}';
-    final icon = switch (r['icon']) {
-      'laundry' => Icons.local_laundry_service_outlined,
-      'sparkles' => Icons.auto_awesome,
-      _ => Icons.chair_outlined
-    };
+    final icon = serviceGlyph(r['icon']);
     Widget fallback() => Container(
         color: leaf,
         alignment: Alignment.center,
@@ -472,7 +468,7 @@ class _ServiceCard extends StatelessWidget {
     final category = '${r['category'] ?? ''}';
     final tag = '${r['tag'] ?? ''}'.trim();
     return Material(
-        color: Colors.white,
+        color: const Color(0xDFFFFEF9),
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
             side: BorderSide(color: selected ? forest : line)),

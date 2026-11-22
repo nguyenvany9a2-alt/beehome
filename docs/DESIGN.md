@@ -1,5 +1,7 @@
 # Thiết kế BeeHome và phạm vi Ý
 
+Đây là tài liệu khảo sát và thiết kế ban đầu. Giao diện và hành vi của phiên bản hiện tại được mô tả trong README và hợp đồng dữ liệu.
+
 ## Tham khảo thị trường
 
 Khảo sát nguồn công khai ngày 07/11/2026:

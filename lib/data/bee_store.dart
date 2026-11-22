@@ -3,11 +3,15 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
+import 'safe_writes.dart';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 
 typedef RecordData = Map<String, dynamic>;
+
+class MissingProfile extends StateError {
+  MissingProfile() : super('Chưa có hồ sơ BeeHome cho tài khoản này.');
+}
 
 class BeeStore extends ChangeNotifier {
   BeeStore()
@@ -20,12 +24,33 @@ class BeeStore extends ChangeNotifier {
       : live = false;
   final bool live;
   final subscriptions = <String, StreamSubscription>{};
-  String? syncError;
+  final _errors = <String, String>{};
+  String? get syncError => _errors.values.firstOrNull;
   String uid, role;
+  bool _closed = false;
+  bool get sessionActive =>
+      !_closed && (!live || FirebaseAuth.instance.currentUser?.uid == uid);
   Map<String, dynamic> data;
-  List<RecordData> rows(String name) => ((data[name] ?? []) as List)
-      .map((e) => Map<String, dynamic>.from(e as Map))
-      .toList();
+  List<RecordData> rows(String name) {
+    final records = ((data[name] ?? []) as List)
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+    if (name == 'worker_profiles') {
+      final totals = {for (final r in rows('rating_totals')) r['id']: r};
+      for (final worker in records) {
+        final extra = totals[worker['id']];
+        if (extra == null) continue;
+        final old = (worker['reviewCount'] as num?) ?? 0;
+        final count = old + (extra['count'] as num);
+        final oldSum = (worker['ratingSum'] as num?) ??
+            ((worker['rating'] as num?) ?? 0) * old;
+        worker['reviewCount'] = count;
+        worker['rating'] = count == 0 ? 0 : (oldSum + extra['sum']) / count;
+      }
+    }
+    return records;
+  }
+
   RecordData? find(String collection, String id) {
     for (final r in rows(collection)) {
       if (r['id'] == id) return r;
@@ -53,73 +78,103 @@ class BeeStore extends ChangeNotifier {
     }
     uid = user.uid;
     final token = await user.getIdTokenResult(true);
-    role = token.claims?['role']?.toString() ?? 'customer';
+    final doc = await FirebaseFirestore.instance.doc('users/$uid').get();
+    if (!doc.exists) throw MissingProfile();
+    final profile = doc.data()!;
+    if (profile['status'] != 'active') {
+      throw StateError('Tài khoản đang bị khóa. Hãy liên hệ quản trị viên.');
+    }
+    if (profile['role'] == 'admin' && token.claims?['role'] != 'admin') {
+      throw StateError(
+          'Hồ sơ quản trị chưa khớp quyền Firebase Authentication. Hãy kiểm tra custom claim của UID này.');
+    }
+    role = token.claims?['role'] == 'admin'
+        ? 'admin'
+        : profile['role'] == 'worker'
+            ? 'worker'
+            : 'customer';
+    data['users'] = [
+      {...profile, 'id': uid}
+    ];
     await reload();
+  }
+
+  Map<String, Query<RecordData>> get _queries {
+    final db = FirebaseFirestore.instance;
+    Query<RecordData> mine(String name, String field) =>
+        db.collection(name).where(field, isEqualTo: uid);
+    final party = role == 'worker' ? 'workerId' : 'customerId';
+    return {
+      'services': admin
+          ? db.collection('services')
+          : db.collection('services').where('active', isEqualTo: true),
+      'users': admin
+          ? db.collection('users')
+          : db.collection('users').where(FieldPath.documentId, isEqualTo: uid),
+      'worker_profiles': admin
+          ? db.collection('worker_profiles')
+          : role == 'worker'
+              ? db
+                  .collection('worker_profiles')
+                  .where(FieldPath.documentId, isEqualTo: uid)
+              : db
+                  .collection('worker_profiles')
+                  .where('approval', isEqualTo: 'approved'),
+      if (role == 'customer') 'addresses': mine('addresses', 'userId'),
+      'orders': admin ? db.collection('orders') : mine('orders', party),
+      'payments': admin ? db.collection('payments') : mine('payments', party),
+      'reviews': admin ? db.collection('reviews') : mine('reviews', party),
+      'notifications': mine('notifications', 'userId'),
+      'rating_totals': db.collection('rating_totals'),
+    };
+  }
+
+  void _receive(String name, QuerySnapshot<RecordData> snapshot) {
+    if (!sessionActive) return;
+    data[name] = [
+      for (final d in snapshot.docs) {...d.data(), 'id': d.id}
+    ];
+    _errors.remove(name);
+    if (name == 'worker_profiles' && role == 'worker') {
+      final approved = find(name, uid)?['approval'] == 'approved';
+      if (approved && !subscriptions.containsKey('job_offers')) {
+        _listen(
+            'job_offers', FirebaseFirestore.instance.collection('job_offers'));
+      } else if (!approved) {
+        subscriptions.remove('job_offers')?.cancel();
+        data.remove('job_offers');
+        _errors.remove('job_offers');
+      }
+    }
     notifyListeners();
   }
 
+  void _listen(String name, Query<RecordData> query) {
+    subscriptions[name] = query
+        .snapshots()
+        .listen((snap) => _receive(name, snap), onError: (Object e) {
+      if (!sessionActive) return;
+      _errors[name] = beeError(e);
+      subscriptions.remove(name)?.cancel();
+      notifyListeners();
+    });
+  }
+
   Future<void> reload() async {
-    if (!live) return;
-    final db = FirebaseFirestore.instance;
-    for (final c in [
-      'services',
-      'users',
-      'worker_profiles',
-      'addresses',
-      'orders',
-      'reviews',
-      'notifications',
-    ]) {
-      Query<Map<String, dynamic>> q = db.collection(c);
-      if (!admin) {
-        if (c == 'services') q = q.where('active', isEqualTo: true);
-        if (c == 'users') q = q.where(FieldPath.documentId, isEqualTo: uid);
-        if (c == 'worker_profiles') {
-          q = role == 'worker'
-              ? q.where(FieldPath.documentId, isEqualTo: uid)
-              : q.where('approval', isEqualTo: 'approved');
-        }
-        if (c == 'addresses' || c == 'notifications') {
-          q = q.where('userId', isEqualTo: uid);
-        }
-        if (c == 'orders') {
-          q = q.where(
-            role == 'worker' ? 'workerId' : 'customerId',
-            isEqualTo: uid,
-          );
-        }
-        if (c == 'reviews') {
-          q = q.where(
-            role == 'worker' ? 'workerId' : 'customerId',
-            isEqualTo: uid,
-          );
-        }
-      }
-      if (!subscriptions.containsKey(c)) {
-        subscriptions[c] = q.snapshots().listen(
-          (snapshot) {
-            data[c] =
-                snapshot.docs.map((e) => {...e.data(), 'id': e.id}).toList();
-            syncError = null;
-            notifyListeners();
-          },
-          onError: (Object e) {
-            syncError = 'Không đồng bộ được $c: $e';
-            notifyListeners();
-          },
-        );
-      }
-      final s = await q.get();
-      data[c] = s.docs.map((e) => {...e.data(), 'id': e.id}).toList();
-    }
-    notifyListeners();
+    if (!live || !sessionActive) return;
+    await Future.wait(_queries.entries.map((item) async {
+      if (!subscriptions.containsKey(item.key)) _listen(item.key, item.value);
+      _receive(item.key, await item.value.get());
+    }));
   }
 
   @override
   void dispose() {
+    _closed = true;
     for (final sub in subscriptions.values) {
       sub.cancel();
     }
+    subscriptions.clear();
     super.dispose();
   }
 
@@ -140,7 +195,6 @@ class BeeStore extends ChangeNotifier {
           .collection(collection)
           .doc(id)
           .set(copy, SetOptions(merge: true));
-      await reload();
     } else {
       final list = rows(collection);
       final i = list.indexWhere((e) => e['id'] == id);
@@ -157,8 +211,7 @@ class BeeStore extends ChangeNotifier {
   Future<void> saveAddress(RecordData row) async {
     row = {...row, 'userId': uid};
     if (live) {
-      await FirebaseFunctions.instance.httpsCallable('saveAddress').call(row);
-      await reload();
+      await writeAddress(uid, row);
       return;
     }
     final all = rows('addresses');
@@ -173,10 +226,7 @@ class BeeStore extends ChangeNotifier {
 
   Future<void> deleteAddress(String id) async {
     if (live) {
-      await FirebaseFunctions.instance.httpsCallable('deleteAddress').call({
-        'id': id,
-      });
-      await reload();
+      await writeAddress(uid, {'id': id}, remove: true);
       return;
     }
     final old = find('addresses', id);
@@ -202,12 +252,7 @@ class BeeStore extends ChangeNotifier {
       throw StateError('Đơn này đã được đánh giá.');
     }
     if (live) {
-      await FirebaseFunctions.instance.httpsCallable('submitReview').call({
-        'orderId': orderId,
-        'stars': stars,
-        'comment': comment,
-      });
-      await reload();
+      await writeReview(uid, order, stars, comment);
       return;
     }
     await save('reviews', {
@@ -238,12 +283,12 @@ class BeeStore extends ChangeNotifier {
       throw StateError('Cần nhập lý do từ chối.');
     }
     if (live) {
-      await FirebaseFunctions.instance.httpsCallable('approveWorker').call({
-        'id': id,
-        'approved': accepted,
-        'reason': reason,
+      await FirebaseFirestore.instance.doc('worker_profiles/$id').update({
+        'approval': accepted ? 'approved' : 'rejected',
+        'reason': reason.trim(),
+        'approvedBy': uid,
+        'approvedAt': DateTime.now().toUtc().toIso8601String(),
       });
-      await reload();
       return;
     }
     final row = find('worker_profiles', id)!;
@@ -259,11 +304,9 @@ class BeeStore extends ChangeNotifier {
       throw StateError('Không được thay đổi trạng thái tài khoản này.');
     }
     if (live) {
-      await FirebaseFunctions.instance.httpsCallable('setUserStatus').call({
-        'id': id,
-        'status': status,
-      });
-      await reload();
+      await FirebaseFirestore.instance
+          .doc('users/$id')
+          .update({'status': status});
       return;
     }
     await save('users', {...find('users', id)!, 'status': status});
@@ -282,7 +325,7 @@ class BeeStore extends ChangeNotifier {
     if (settings.authorizationStatus != AuthorizationStatus.authorized) {
       throw StateError('Bạn chưa cho phép trình duyệt nhận thông báo.');
     }
-    final token = await messaging.getToken(vapidKey: vapid);
+    final token = await messaging.getToken(vapidKey: kIsWeb ? vapid : null);
     if (token == null) throw StateError('Chưa lấy được mã nhận thông báo.');
     final col = FirebaseFirestore.instance
         .collection('users')
@@ -299,17 +342,21 @@ class BeeStore extends ChangeNotifier {
 
   Future<void> markRead([String? id]) async {
     final own = rows('notifications')
-        .where((n) => n['userId'] == uid && (id == null || n['id'] == id));
+        .where((n) =>
+            n['userId'] == uid &&
+            n['read'] != true &&
+            (id == null || n['id'] == id))
+        .toList();
     if (live) {
-      final batch = FirebaseFirestore.instance.batch();
-      for (final n in own) {
-        batch.update(
-          FirebaseFirestore.instance.collection('notifications').doc(n['id']),
-          {'read': true},
-        );
+      final db = FirebaseFirestore.instance;
+      for (int i = 0; i < own.length; i += 400) {
+        final batch = db.batch();
+        for (final n in own.skip(i).take(400)) {
+          batch.update(
+              db.collection('notifications').doc(n['id']), {'read': true});
+        }
+        await batch.commit();
       }
-      await batch.commit();
-      await reload();
       return;
     }
     for (final n in own.toList()) {

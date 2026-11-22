@@ -33,6 +33,8 @@ void main() {
     viewport(tester, const Size(1440, 1000));
     await tester.pumpWidget(app.BeeHomeApp(store: FixtureStore()));
     await tester.pumpAndSettle();
+    await tapVisible(
+        tester, find.widgetWithText(FilledButton, 'Khám phá dịch vụ'));
     expect(find.text('Dọn nhà theo giờ'), findsOneWidget);
     expect(find.text('Chăm sóc rèm'), findsOneWidget);
     await tester.enterText(find.byType(TextField), 'cham soc rem');
@@ -53,6 +55,8 @@ void main() {
     await tester.pumpWidget(app.BeeHomeApp(
         store: FixtureStore(), onBookingRequested: (d) => draft = d));
     await tester.pumpAndSettle();
+    await tapVisible(
+        tester, find.widgetWithText(FilledButton, 'Khám phá dịch vụ'));
     await tapVisible(tester, find.byTooltip('Bộ lọc'));
     await tapVisible(tester, find.text('Theo giờ'));
     await tapVisible(tester, find.text('Áp dụng'));
@@ -83,6 +87,8 @@ void main() {
     final before = store.rows('orders').length;
     await tester.pumpWidget(app.BeeHomeApp(store: store));
     await tester.pumpAndSettle();
+    await tapVisible(
+        tester, find.widgetWithText(FilledButton, 'Khám phá dịch vụ'));
     await tapVisible(tester, find.text('Xem chi tiết'));
     await tapVisible(tester, find.text('Đặt lịch'));
     await tapVisible(tester, find.text('Chọn ngày làm'));
@@ -126,6 +132,8 @@ void main() {
     });
     await tester.pumpWidget(app.BeeHomeApp(store: store));
     await tester.pumpAndSettle();
+    await tapVisible(
+        tester, find.widgetWithText(FilledButton, 'Khám phá dịch vụ'));
     await tapVisible(tester, find.text('Chọn theo công việc'));
     await tapVisible(tester, find.text('Vệ sinh đèn'));
     expect(find.text('Vệ sinh theo yêu cầu'), findsOneWidget);
@@ -168,6 +176,11 @@ void main() {
           store: FixtureStore(
               user: role == 'worker' ? 'w1' : 'admin', accountRole: role)));
       await tester.pumpAndSettle();
+      if (role == 'worker') {
+        await tapVisible(tester, find.byTooltip('Mở hồ sơ'));
+      } else {
+        await tapVisible(tester, find.text('Tổng quan vận hành'));
+      }
       expect(
           find.text(
               role == 'worker' ? 'Hồ sơ nghề nghiệp' : 'Tổng quan vận hành'),

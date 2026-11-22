@@ -8,7 +8,9 @@ import '../../core/locales.dart';
 import '../../widgets/common.dart';
 import '../../widgets/bee_backdrop.dart';
 import '../../data/bee_store.dart';
-import '../../main.dart';
+import '../bee_shell.dart';
+import '../home/guest_home.dart';
+import '../../widgets/bee_header.dart';
 import '../booking/booking_flow.dart';
 import 'auth_screen.dart';
 
@@ -27,6 +29,8 @@ class _AuthGateState extends State<AuthGate> {
   String? error;
   bool loading = true;
   bool registering = false;
+  bool signIn = false;
+  bool incomplete = false;
   String? loadingUid;
   int generation = 0;
 
@@ -45,8 +49,12 @@ class _AuthGateState extends State<AuthGate> {
     final current = ++generation;
     loadingUid = user?.uid;
     final old = store;
+    bookingNavigatorKey.currentState?.popUntil((r) => r.isFirst);
+    old?.removeListener(accountChanged);
     setState(() {
       store = null;
+      signIn = false;
+      incomplete = false;
       error = null;
       loading = user != null;
     });
@@ -66,6 +74,7 @@ class _AuthGateState extends State<AuthGate> {
         s.dispose();
         return;
       }
+      s.addListener(accountChanged);
       setState(() {
         loadingUid = null;
         store = s;
@@ -79,15 +88,26 @@ class _AuthGateState extends State<AuthGate> {
         setState(() {
           loadingUid = null;
           error = e.toString().replaceFirst('Bad state: ', '');
+          incomplete = e is MissingProfile;
           loading = false;
         });
       }
     }
   }
 
+  void accountChanged() {
+    if (!mounted) return;
+    if (store?.profile['status'] == 'blocked') {
+      bookingNavigatorKey.currentState?.popUntil((r) => r.isFirst);
+      FirebaseAuth.instance.signOut();
+    }
+    setState(() {});
+  }
+
   @override
   void dispose() {
     sub?.cancel();
+    store?.removeListener(accountChanged);
     store?.dispose();
     super.dispose();
   }
@@ -95,48 +115,71 @@ class _AuthGateState extends State<AuthGate> {
   @override
   Widget build(BuildContext context) {
     final s = store;
-    if (s != null) {
-      return BeeHomeApp(
-        store: s,
-        onBookingRequested: (draft) => startBooking(s, draft),
-      );
-    }
     return MaterialApp(
       title: 'BeeHome',
+      navigatorKey: bookingNavigatorKey,
       locale: beeLocale,
       supportedLocales: beeLocales,
       localizationsDelegates: beeDelegates,
       debugShowCheckedModeBanner: false,
       theme: beeTheme(),
-      builder: buildBeeBackdrop,
-      home: loading
-          ? const Scaffold(
-              body: Center(
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
-              ReadingSurface(child: BeeBrand()),
-              SizedBox(height: 22),
-              SizedBox(
-                  width: 96,
-                  child: LinearProgressIndicator(
-                      semanticsLabel: 'Đang tải tài khoản'))
-            ])))
-          : error != null
-              ? _ErrorView(error!,
-                  () => onUserChanged(FirebaseAuth.instance.currentUser))
-              : AuthScreen(
-                  onSignedIn: () {
-                    if (!loading && store == null) {
-                      onUserChanged(FirebaseAuth.instance.currentUser);
-                    }
-                  },
-                  onRegistrationStart: () => registering = true,
-                  onRegistrationEnd: (complete) {
-                    registering = false;
-                    if (complete && mounted) {
-                      onUserChanged(FirebaseAuth.instance.currentUser);
-                    }
-                  },
-                ),
+      builder: (c, child) => buildBeeBackdrop(
+          c, child, s?.profile['appearance'] as Map? ?? const {}),
+      home: s != null
+          ? BeeShell(
+              key: ValueKey(s.uid),
+              store: s,
+              onBookingRequested: (draft) => startBooking(s, draft))
+          : loading
+              ? const Scaffold(
+                  body: Center(
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  ReadingSurface(child: BeeBrand()),
+                  SizedBox(height: 22),
+                  SizedBox(
+                      width: 96,
+                      child: LinearProgressIndicator(
+                          semanticsLabel: 'Đang tải tài khoản'))
+                ])))
+              : incomplete
+                  ? _CompleteProfile(
+                      done: () =>
+                          onUserChanged(FirebaseAuth.instance.currentUser))
+                  : error != null
+                      ? _ErrorView(
+                          error!,
+                          () =>
+                              onUserChanged(FirebaseAuth.instance.currentUser))
+                      : !signIn
+                          ? GuestHome(
+                              login: () => setState(() => signIn = true))
+                          : Scaffold(
+                              body: Column(children: [
+                              BeeHeader(
+                                  signedIn: false,
+                                  home: () => setState(() => signIn = false),
+                                  account: () {},
+                                  alerts: () {}),
+                              Expanded(
+                                  child: AuthScreen(
+                                onSignedIn: () {
+                                  if (!loading && store == null) {
+                                    onUserChanged(
+                                        FirebaseAuth.instance.currentUser);
+                                  }
+                                },
+                                onRegistrationStart: () => registering = true,
+                                onRegistrationEnd: (complete) {
+                                  registering = false;
+                                  if (mounted &&
+                                      FirebaseAuth.instance.currentUser !=
+                                          null) {
+                                    onUserChanged(
+                                        FirebaseAuth.instance.currentUser);
+                                  }
+                                },
+                              ))
+                            ])),
     );
   }
 }
@@ -175,4 +218,87 @@ class _ErrorView extends StatelessWidget {
               ])),
             )),
       )));
+}
+
+class _CompleteProfile extends StatefulWidget {
+  const _CompleteProfile({required this.done});
+  final VoidCallback done;
+  @override
+  State<_CompleteProfile> createState() => _CompleteProfileState();
+}
+
+class _CompleteProfileState extends State<_CompleteProfile> {
+  final key = GlobalKey<FormState>();
+  String name = '', phone = '', role = 'customer';
+  bool busy = false;
+  String? error;
+  Future<void> submit() async {
+    if (busy || !key.currentState!.validate()) return;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    setState(() => busy = true);
+    try {
+      await saveProfile(user.uid, name.trim(), phone.trim(), user.email!, role);
+      if (mounted) widget.done();
+    } on FirebaseException catch (e) {
+      if (mounted) setState(() => error = 'Chưa lưu được hồ sơ (${e.code}).');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+      body: Center(
+          child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 440),
+                  child: Panel(
+                      child: Form(
+                          key: key,
+                          child: Column(children: [
+                            Text('Hoàn tất hồ sơ BeeHome',
+                                style: Theme.of(context).textTheme.titleLarge),
+                            const SizedBox(height: 16),
+                            TextFormField(
+                                decoration:
+                                    const InputDecoration(labelText: 'Họ tên'),
+                                onChanged: (v) => name = v,
+                                validator: (v) => (v ?? '').trim().isEmpty
+                                    ? 'Vui lòng nhập họ tên'
+                                    : null),
+                            const SizedBox(height: 10),
+                            TextFormField(
+                                decoration: const InputDecoration(
+                                    labelText: 'Số điện thoại'),
+                                onChanged: (v) => phone = v,
+                                validator: (v) =>
+                                    RegExp(r'^0[0-9]{9}$').hasMatch(v ?? '')
+                                        ? null
+                                        : 'Nhập số điện thoại 10 số'),
+                            const SizedBox(height: 10),
+                            DropdownButton<String>(
+                                value: role,
+                                items: const [
+                                  DropdownMenuItem(
+                                      value: 'customer',
+                                      child: Text('Khách hàng')),
+                                  DropdownMenuItem(
+                                      value: 'worker',
+                                      child: Text('Người giúp việc'))
+                                ],
+                                onChanged: busy
+                                    ? null
+                                    : (v) => setState(() => role = v!)),
+                            if (error != null) Text(error!),
+                            FilledButton(
+                                onPressed: busy ? null : submit,
+                                child: const Text('Lưu hồ sơ')),
+                            TextButton(
+                                onPressed: busy
+                                    ? null
+                                    : () => FirebaseAuth.instance.signOut(),
+                                child: const Text('Đăng xuất')),
+                          ])))))));
 }

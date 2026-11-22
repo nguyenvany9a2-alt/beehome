@@ -68,7 +68,7 @@ class _AuthScreenState extends State<AuthScreen> {
         );
         accountCreated = true;
         await saveProfile(cred.user!.uid, profileName, profilePhone,
-            profileEmail, profileRole);
+            cred.user!.email ?? profileEmail, profileRole);
       } else {
         await auth.signInWithEmailAndPassword(
           email: email.text.trim(),
@@ -91,35 +91,6 @@ class _AuthScreenState extends State<AuthScreen> {
     if (signingUp) onEnd?.call(complete);
     if (!signingUp && complete && mounted) onSignIn?.call();
     if (mounted) setState(() => busy = false);
-  }
-
-  /// Lưu hồ sơ người dùng vào Firestore lúc đăng ký.
-  Future<void> saveProfile(String uid, String fullName, String phoneNumber,
-      String mail, String accountRole) async {
-    final db = FirebaseFirestore.instance;
-    await db.collection('users').doc(uid).set({
-      'name': fullName,
-      'email': mail,
-      'phone': phoneNumber,
-      'avatarUrl': '',
-      'role': accountRole,
-      'status': 'active',
-      'createdAt': DateTime.now().toIso8601String(),
-    });
-    // Người giúp việc có thêm hồ sơ nghề nghiệp, chờ admin duyệt.
-    if (accountRole == 'worker') {
-      await db.collection('worker_profiles').doc(uid).set({
-        'name': fullName,
-        'skills': '',
-        'area': 'TP. Hồ Chí Minh',
-        'experience': '',
-        'bio': '',
-        'approval': 'pending',
-        'reason': '',
-        'rating': 0,
-        'reviewCount': 0,
-      });
-    }
   }
 
   /// Gửi mail đặt lại mật khẩu.
@@ -322,4 +293,35 @@ class _AuthScreenState extends State<AuthScreen> {
       ));
     })));
   }
+}
+
+/// Lưu hồ sơ người dùng vào Firestore lúc đăng ký.
+Future<void> saveProfile(String uid, String fullName, String phoneNumber,
+    String mail, String accountRole) async {
+  final db = FirebaseFirestore.instance;
+  final batch = db.batch();
+  batch.set(db.collection('users').doc(uid), {
+    'name': fullName,
+    'email': mail,
+    'phone': phoneNumber,
+    'avatarUrl': '',
+    'role': accountRole,
+    'status': 'active',
+    'createdAt': DateTime.now().toIso8601String(),
+  });
+  // Người giúp việc có thêm hồ sơ nghề nghiệp, chờ admin duyệt.
+  if (accountRole == 'worker') {
+    batch.set(db.collection('worker_profiles').doc(uid), {
+      'name': fullName,
+      'skills': '',
+      'area': 'TP. Hồ Chí Minh',
+      'experience': '',
+      'bio': '',
+      'approval': 'pending',
+      'reason': '',
+      'rating': 0,
+      'reviewCount': 0,
+    });
+  }
+  await batch.commit();
 }

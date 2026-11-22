@@ -4,6 +4,7 @@ import '../../data/bee_store.dart';
 import '../../core/theme.dart';
 import '../../widgets/common.dart';
 import '../../data/order_actions.dart';
+import '../../data/safe_writes.dart';
 
 /// "Chìa khóa" để mở hộp thoại từ bên ngoài BeeShell.
 final bookingNavigatorKey = GlobalKey<NavigatorState>();
@@ -11,11 +12,11 @@ final bookingNavigatorKey = GlobalKey<NavigatorState>();
 /// Nhận gói {serviceId, addressId, duration} từ màn của Ý,
 /// cho khách chọn ngày giờ, xác nhận rồi tạo đơn.
 Future<void> startBooking(BeeStore store, Map<String, dynamic> draft) async {
-  final context = bookingNavigatorKey.currentContext;
+  final context = bookingNavigatorKey.currentState?.overlay?.context;
   if (context == null) return;
 
   // 1. Chọn ngày (từ hôm nay đến 30 ngày tới)
-  final now = DateTime.now();
+  final now = DateTime.now().toUtc().add(const Duration(hours: 7));
   final today = DateTime(now.year, now.month, now.day);
   final day = await showDatePicker(
     context: context,
@@ -24,15 +25,15 @@ Future<void> startBooking(BeeStore store, Map<String, dynamic> draft) async {
     lastDate: today.add(const Duration(days: 30)),
     helpText: 'Chọn ngày làm',
   );
-  if (day == null || !context.mounted) return;
+  if (day == null || !context.mounted || !store.sessionActive) return;
 
   // 2. Chọn giờ bắt đầu
   final time = await showTimePicker(
     context: context,
     initialTime: const TimeOfDay(hour: 8, minute: 0),
-    helpText: 'Chọn giờ bắt đầu (07:00 – 19:59)',
+    helpText: 'Giờ Việt Nam (07:00 – 19:59)',
   );
-  if (time == null || !context.mounted) return;
+  if (time == null || !context.mounted || !store.sessionActive) return;
   if (time.hour < 7 || time.hour > 19) {
     _toast(context, 'Vui lòng chọn giờ bắt đầu từ 07:00 đến 19:59.');
     return;
@@ -96,7 +97,7 @@ Future<void> startBooking(BeeStore store, Map<String, dynamic> draft) async {
       ],
     ),
   );
-  if (ok != true || !context.mounted) return;
+  if (ok != true || !context.mounted || !store.sessionActive) return;
 
   // 4. Tạo đơn
   try {
@@ -105,13 +106,15 @@ Future<void> startBooking(BeeStore store, Map<String, dynamic> draft) async {
       addressId: draft['addressId'],
       duration: hours,
       when: when,
+      confirmedTotal: total,
+      confirmedAddress: "${address['detail']}, ${address['area']}",
     );
     if (context.mounted) {
       _toast(context, 'Đặt thành công đơn $id. Xem ở mục "Đơn của tôi".');
     }
   } catch (e) {
     if (context.mounted) {
-      _toast(context, e.toString().replaceFirst('Bad state: ', ''));
+      _toast(context, beeError(e));
     }
   }
 }

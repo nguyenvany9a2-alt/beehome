@@ -4,14 +4,15 @@
 
 ## Chạy trong VS Code trên Windows
 
-Mở thư mục dự án của Hào có cả `pubspec.yaml` và `firebase.local.json`. Bản giao diện đã được kiểm tra bằng Flutter 3.47.6 và Dart 3.13.5.
+Mở thư mục BeeHome có cả `pubspec.yaml` và `firebase.local.json`. Bản giao diện đã được kiểm tra bằng Flutter 3.47.6 và Dart 3.13.5.
 
 ```console
 flutter pub get
-flutter run -d web-server --web-hostname=127.0.0.1 --web-port=8001 --dart-define-from-file=firebase.local.json
+firebase deploy --only firestore:rules --project beehome-efadc
+flutter run -d web-server --web-hostname=127.0.0.1 --web-port=8000 --dart-define-from-file=firebase.local.json
 ```
 
-Giữ Terminal đang chạy. Trong Mobile Preview mở [http://127.0.0.1:8001](http://127.0.0.1:8001). Với Chrome, dùng `flutter run -d chrome --dart-define-from-file=firebase.local.json`. Tệp cấu hình của nhóm cần có `BEE_FIREBASE` bằng `true` và các thông số Web App của đúng Firebase project. Dùng `firebase.example.json` để đối chiếu tên trường.
+Giữ Terminal đang chạy. Trong Mobile Preview mở [http://127.0.0.1:8000](http://127.0.0.1:8000). Với Chrome, dùng `flutter run -d chrome --dart-define-from-file=firebase.local.json`. Tệp cấu hình của nhóm cần có `BEE_FIREBASE` bằng `true` và các thông số Web App của đúng Firebase project. Dùng `firebase.example.json` để đối chiếu tên trường.
 
 ## Chức năng
 
@@ -40,4 +41,6 @@ flutter test
 flutter build web --release --dart-define-from-file=firebase.local.json
 ```
 
-Kiểm tra đăng ký và đặt đơn trên môi trường Firebase kiểm thử của nhóm trước khi nghiệm thu. Trong bản mã nguồn này, màn đăng ký tạo `users/{uid}` và phần đặt đơn ghi `orders` từ ứng dụng. Tệp `firestore.rules` đi cùng kho chặn hai thao tác đó. Nhóm cần thống nhất đường ghi với backend và phân quyền đang triển khai để dùng các luồng này với dữ liệu thật.
+Khách vãng lai và người đã đăng nhập bắt đầu ở trang chủ. Nhấn logo để về trang này. Trên máy tính, nút mũi tên thu gọn hoặc ghim thanh công cụ. Trên điện thoại, mở danh sách chức năng bằng nút menu. Trong hồ sơ, người dùng có thể chọn ảnh, nền, tông màu, cỡ chữ và giảm chuyển động.
+
+Chi tiết các collection và chuyển trạng thái nằm trong [hợp đồng dữ liệu](docs/CONTRACT.md). Các bước cấu hình Firebase, thông báo đẩy và chạy Emulator có trong [hướng dẫn Firebase](docs/FIREBASE.md).

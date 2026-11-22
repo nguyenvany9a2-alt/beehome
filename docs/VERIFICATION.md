@@ -1,17 +1,11 @@
-# Kết quả kiểm tra 07/11/2026
+# Kiểm tra phiên bản trang chủ và luồng đặt dịch vụ
 
-| Kiểm tra | Kết quả |
+| Phạm vi | Cách kiểm tra |
 |---|---|
-| Dart formatter / parser | Thành công trên các file lib/ và test/ |
-| node --check functions/index.js | Thành công |
-| node --test functions/test/callables.test.cjs | 8/8 thành công với mock Firebase |
-| flutter analyze | Chưa chạy |
-| flutter test | Chưa chạy |
-| flutter build web | Chưa chạy |
-| QA giao diện bằng trình duyệt | Chưa chạy |
-| Firebase Rules / Emulator / backend thật | Chưa chạy |
-| Push notification trên thiết bị thật | Chưa chạy |
+| Flutter | Flutter 3.47.6 và Dart 3.13.5. Chạy `flutter analyze`, `flutter test` và `flutter build web --release`. |
+| Giao diện | Kiểm thử widget ở kích thước máy tính và điện thoại, gồm logo, cuộn, thu gọn, rê chuột, ghim menu, vai trò, hộp thoại địa chỉ, đặt lịch và lưu tùy chỉnh. |
+| Dữ liệu và phân quyền | Firebase Auth và Firestore Emulator chạy Rules của kho. Dùng tài khoản khách, hai người giúp việc và một quản trị viên để kiểm tra truy vấn, duyệt, địa chỉ mặc định, đặt và hủy đơn, nhận đồng thời, trùng lịch, thu tiền, đánh giá, thông báo, khóa tài khoản và quyền đọc chéo. |
+| Cloud Functions cũ | `node --test functions/test/callables.test.cjs` kiểm tra logic các callable mà bản trước sử dụng. Luồng nghiệp vụ chính của bản này dùng Firestore. |
+| Nghiệm thu thực tế của nhóm | Chạy Chrome hoặc Mobile Preview với cấu hình dự án, xác nhận quyền mới đã triển khai. Nếu sử dụng Web Push, thử nhận tin ngoài tab. Nếu bàn giao APK, dùng cấu hình Firebase Android đúng application ID và nghiệm thu trên thiết bị. |
 
-Công cụ Flutter dừng ở bước khởi tạo do tự động duyệt chặn truy cập metadata cloud của tiến trình. Không thử vượt qua chặn. Vì vậy mã nguồn chưa được xác nhận là build thành công. Kiểm tra cú pháp Dart không thay thế kiểm tra kiểu dữ liệu, dependency hay chạy UI.
-
-8 mock tests: quyền chủ đơn, điểm hợp lệ, đánh giá duy nhất và điểm tổng hợp, quyền duyệt, lý do từ chối, một địa chỉ mặc định và chuyển khi xóa, không ghi đè địa chỉ người khác, từ chối tài khoản bị khóa. Các mock tests chạy logic callable thật nhưng thay Admin SDK bằng dữ liệu trong bộ nhớ; không chứng minh Firestore transaction thật hoặc Rules hoạt động đúng.
+Các bản ghi dùng trong kiểm thử được tạo trong bộ widget test hoặc trong Firebase Emulator riêng. Không có chức năng nạp dữ liệu thử vào danh mục sản phẩm.
