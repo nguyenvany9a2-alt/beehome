@@ -1,8 +1,16 @@
 import 'package:flutter/material.dart';
 import 'booking/order_buttons.dart';
+import '../data/order_actions.dart';
+import '../data/safe_writes.dart';
+import '../widgets/bee_header.dart';
+import 'home/home_page.dart';
+import 'account/preferences.dart';
+import 'booking/booking_flow.dart';
+import 'services/service_catalog.dart';
 import '../core/theme.dart';
 import '../data/bee_store.dart';
 import '../widgets/common.dart';
+import '../widgets/bee_backdrop.dart';
 import 'auth/logout_button.dart';
 
 class BeeShell extends StatefulWidget {
@@ -15,28 +23,18 @@ class BeeShell extends StatefulWidget {
 
 class _BeeShellState extends State<BeeShell> {
   final scaffoldKey = GlobalKey<ScaffoldState>();
+  final pageScroll = ScrollController();
   final searchController = TextEditingController();
   BeeStore get s => widget.store;
-  String page = 'services',
-      search = '',
-      category = 'Tất cả',
-      unit = 'Tất cả',
-      sort = 'Đề xuất',
-      orderFilter = 'Tất cả';
+  String page = 'home', search = '', orderFilter = 'Tất cả';
+  bool pinned = true, hovering = false;
   bool unread = false;
-  double maxPrice = 1000000;
-  final selected = <String>{};
   String? error;
   bool busy = false;
   @override
   void initState() {
     super.initState();
     s.addListener(changed);
-    page = s.admin
-        ? 'dashboard'
-        : s.role == 'worker'
-        ? 'profile'
-        : 'services';
   }
 
   void changed() {
@@ -45,26 +43,32 @@ class _BeeShellState extends State<BeeShell> {
 
   @override
   void dispose() {
+    pageScroll.dispose();
     s.removeListener(changed);
     searchController.dispose();
     super.dispose();
   }
 
   void go(String p) {
+    if (!nav.any((n) => n.$1 == p)) return;
     scaffoldKey.currentState?.closeDrawer();
+    if (pageScroll.hasClients) pageScroll.jumpTo(0);
+    FocusManager.instance.primaryFocus?.unfocus();
     searchController.clear();
     setState(() {
       page = p;
+      hovering = false;
       search = '';
       error = null;
     });
   }
 
   void toast(String t) {
-    if (mounted)
+    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(t), behavior: SnackBarBehavior.floating),
       );
+    }
   }
 
   Future<void> task(
@@ -80,610 +84,318 @@ class _BeeShellState extends State<BeeShell> {
       await fn();
       toast(success);
     } catch (e) {
-      setState(() => error = e.toString().replaceFirst('Bad state: ', ''));
+      if (mounted) {
+        setState(() => error = beeError(e));
+      }
     } finally {
       if (mounted) setState(() => busy = false);
     }
   }
 
-  List<(String, String, IconData)> get nav => s.admin
+  List<(String, String, IconData)> get nav => [
+        ('home', 'Trang chủ', Icons.home_outlined),
+        ...(s.admin
+            ? [
+                ('dashboard', 'Tổng quan', Icons.dashboard_outlined),
+                (
+                  'manage_services',
+                  'Quản lý dịch vụ',
+                  Icons.grid_view_outlined
+                ),
+                ('users', 'Người dùng', Icons.people_outline),
+                (
+                  'workers',
+                  'Duyệt người giúp việc',
+                  Icons.verified_user_outlined
+                ),
+                ('orders', 'Quản lý đơn hàng', Icons.receipt_long_outlined),
+                ('services', 'Xem cửa hàng', Icons.storefront_outlined),
+                ('notifications', 'Thông báo', Icons.notifications_outlined),
+                ('profile', 'Hồ sơ cá nhân', Icons.person_outline),
+              ]
+            : s.role == 'worker'
+                ? [
+                    ('profile', 'Hồ sơ của tôi', Icons.person_outline),
+                    ('orders', 'Công việc của tôi', Icons.work_outline),
+                    (
+                      'notifications',
+                      'Thông báo',
+                      Icons.notifications_outlined
+                    ),
+                  ]
+                : [
+                    ('services', 'Khám phá dịch vụ', Icons.grid_view_outlined),
+                    ('orders', 'Đơn của tôi', Icons.receipt_long_outlined),
+                    (
+                      'addresses',
+                      'Địa chỉ của tôi',
+                      Icons.location_on_outlined
+                    ),
+                    ('workers', 'Người giúp việc', Icons.people_outline),
+                    ('reviews', 'Đánh giá', Icons.star_outline),
+                    (
+                      'notifications',
+                      'Thông báo',
+                      Icons.notifications_outlined
+                    ),
+                    ('profile', 'Hồ sơ cá nhân', Icons.person_outline),
+                  ])
+      ];
+  String get roleLabel => s.admin
+      ? 'Quản trị viên'
+      : s.role == 'worker'
+          ? 'Người giúp việc'
+          : 'Khách hàng';
+
+  List<(String, String, IconData)> get mobileNav => s.admin
       ? [
           ('dashboard', 'Tổng quan', Icons.dashboard_outlined),
-          ('manage_services', 'Quản lý dịch vụ', Icons.grid_view_outlined),
-          ('users', 'Người dùng', Icons.people_outline),
-          ('workers', 'Duyệt người giúp việc', Icons.verified_user_outlined),
-          ('orders', 'Quản lý đơn hàng', Icons.receipt_long_outlined),
-          ('services', 'Xem cửa hàng', Icons.storefront_outlined),
+          ('orders', 'Đơn hàng', Icons.receipt_long_outlined),
+          ('manage_services', 'Dịch vụ', Icons.grid_view_outlined),
+          ('more', 'Thêm', Icons.menu)
         ]
       : s.role == 'worker'
-      ? [
-          ('profile', 'Hồ sơ của tôi', Icons.person_outline),
-          ('orders', 'Công việc của tôi', Icons.work_outline),
-          ('notifications', 'Thông báo', Icons.notifications_outlined),
-        ]
-      : [
-          ('services', 'Khám phá dịch vụ', Icons.grid_view_outlined),
-          ('orders', 'Đơn của tôi', Icons.receipt_long_outlined),
-          ('addresses', 'Địa chỉ của tôi', Icons.location_on_outlined),
-          ('workers', 'Người giúp việc', Icons.people_outline),
-          ('reviews', 'Đánh giá', Icons.star_outline),
-          ('notifications', 'Thông báo', Icons.notifications_outlined),
-          ('profile', 'Hồ sơ cá nhân', Icons.person_outline),
-        ];
+          ? [
+              ('profile', 'Hồ sơ', Icons.person_outline),
+              ('orders', 'Công việc', Icons.work_outline),
+              ('more', 'Thêm', Icons.menu)
+            ]
+          : [
+              ('services', 'Dịch vụ', Icons.grid_view_outlined),
+              ('orders', 'Đơn đặt', Icons.receipt_long_outlined),
+              ('profile', 'Hồ sơ', Icons.person_outline),
+              ('more', 'Thêm', Icons.menu)
+            ];
+
   @override
-  Widget build(BuildContext c) {
-    final wide = MediaQuery.sizeOf(c).width >= 1040;
-    final count = s
+  Widget build(BuildContext context) {
+    final wide = MediaQuery.sizeOf(context).width >= 1000;
+    final items = mobileNav;
+    final index = items.indexWhere((n) => n.$1 == page);
+    final notifications = s
         .rows('notifications')
         .where((n) => n['userId'] == s.uid && n['read'] != true)
         .length;
+    final problem = error ?? s.syncError;
+    final expanded = pinned || hovering;
     return Scaffold(
-      key: scaffoldKey,
-      drawer: wide ? null : Drawer(child: sidebar()),
-      body: Row(
-        children: [
-          if (wide) SizedBox(width: 250, child: sidebar()),
+        key: scaffoldKey,
+        drawer: wide ? null : Drawer(child: sidebar()),
+        bottomNavigationBar: wide || page == 'home'
+            ? null
+            : NavigationBar(
+                selectedIndex: index < 0 ? items.length - 1 : index,
+                onDestinationSelected: (i) => items[i].$1 == 'more'
+                    ? scaffoldKey.currentState?.openDrawer()
+                    : go(items[i].$1),
+                destinations: [
+                    for (final n in items)
+                      NavigationDestination(icon: Icon(n.$3), label: n.$2)
+                  ]),
+        body: Column(children: [
+          BeeHeader(
+              home: () => go('home'),
+              account: () => go('profile'),
+              alerts: () => go('notifications'),
+              unread: notifications,
+              menu: wide ? null : () => scaffoldKey.currentState?.openDrawer()),
           Expanded(
-            child: Column(
-              children: [
-                Container(
-                  height: 82,
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    border: Border(
-                      bottom: BorderSide(color: Color(0xFFE3E8E1)),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      if (!wide)
-                        Builder(
-                          builder: (c) => IconButton(
-                            onPressed: () => Scaffold.of(c).openDrawer(),
-                            icon: const Icon(Icons.menu),
-                          ),
-                        ),
-                      if (MediaQuery.sizeOf(c).width >= 600)
-                        const Icon(
-                          Icons.location_on_outlined,
-                          size: 19,
-                          color: muted,
-                        ),
-                      const SizedBox(width: 7),
-                      Expanded(
-                        child: Text(
-                          MediaQuery.sizeOf(c).width >= 600
-                              ? 'TP. Hồ Chí Minh'
-                              : 'BeeHome',
-                          style: TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                      if (!s.live)
-                        const Tag('BẢN DEMO', color: Color(0xFF916400)),
-                      IconButton(
-                        tooltip: 'Thông báo ($count chưa đọc)',
-                        onPressed: () => go('notifications'),
-                        icon: Badge(
-                          isLabelVisible: count > 0,
-                          label: Text('$count'),
-                          child: const Icon(Icons.notifications_outlined),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      CircleAvatar(
-                        backgroundColor: honey,
-                        child: Text(
-                          s.role == 'worker' ? 'A' : 'Ý',
-                          style: const TextStyle(color: ink),
-                        ),
-                      ),
-                      if (wide) ...[
-                        const SizedBox(width: 10),
-                        Text(s.profile['name'] ?? 'Thành viên'),
-                      ],
-                      if (s.live) ...[
-                        const SizedBox(width: 8),
-                        LogoutButton(),
-                      ],
-                    ],
-                  ),
-                ),
-                if (busy) const LinearProgressIndicator(minHeight: 3),
-                Expanded(
-                  child: SingleChildScrollView(
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 1370),
-                        child: Padding(
-                          padding: EdgeInsets.all(wide ? 32 : 18),
+              child: Stack(children: [
+            Positioned.fill(
+                left: wide ? (pinned ? 236 : 52) : 0,
+                child: Column(children: [
+                  if (busy) const LinearProgressIndicator(minHeight: 2),
+                  if (problem != null)
+                    Material(
+                        color: const Color(0xFFFBE8E3),
+                        child: ListTile(
+                            leading:
+                                const Icon(Icons.info_outline, color: danger),
+                            title: Text(problem),
+                            trailing: TextButton(
+                                onPressed: busy
+                                    ? null
+                                    : () => task(s.reload,
+                                        success: 'Đã tải lại dữ liệu'),
+                                child: const Text('Thử lại')))),
+                  Expanded(
+                      child: SingleChildScrollView(
+                          controller: pageScroll,
+                          padding: EdgeInsets.fromLTRB(wide ? 28 : 14,
+                              wide ? 24 : 14, wide ? 28 : 14, 28),
+                          child: Align(
+                              alignment: Alignment.topCenter,
+                              child: ConstrainedBox(
+                                  constraints:
+                                      const BoxConstraints(maxWidth: 1180),
+                                  child: KeyedSubtree(
+                                      key: ValueKey(page),
+                                      child:
+                                          page == 'home' || page == 'services'
+                                              ? content()
+                                              : ReadingSurface(
+                                                  child: content())))))),
+                ])),
+            if (wide)
+              Positioned(
+                  top: 0,
+                  left: 0,
+                  bottom: 0,
+                  width: expanded ? 236 : 52,
+                  child: MouseRegion(
+                      onEnter: (_) {
+                        if (!pinned) setState(() => hovering = true);
+                      },
+                      onExit: (_) {
+                        if (hovering) setState(() => hovering = false);
+                      },
+                      child: Material(
+                          color: const Color(0xF21A3C32),
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (error != null || s.syncError != null)
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 18),
-                                  child: MaterialBanner(
-                                    content: Text(error ?? s.syncError!),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () =>
-                                            setState(() => error = null),
-                                        child: const Text('Đóng'),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              content(),
-                              const SizedBox(height: 40),
-                              Text(
-                                s.live
-                                    ? 'BeeHome · Chăm nhà gọn, sống thảnh thơi.'
-                                    : 'Dữ liệu minh họa · Thay đổi được lưu trên trình duyệt này. Không tạo đơn hoặc giao dịch thật.',
-                                style: const TextStyle(
-                                  color: muted,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Align(
+                                    alignment: expanded
+                                        ? Alignment.centerRight
+                                        : Alignment.center,
+                                    child: IconButton(
+                                        tooltip: pinned
+                                            ? 'Thu gọn thanh công cụ'
+                                            : 'Ghim thanh công cụ',
+                                        color: Colors.white,
+                                        icon: Icon(pinned
+                                            ? Icons.keyboard_double_arrow_left
+                                            : Icons
+                                                .keyboard_double_arrow_right),
+                                        onPressed: () => setState(() {
+                                              pinned = !pinned;
+                                              hovering = false;
+                                            }))),
+                                if (expanded) Expanded(child: sidebar()),
+                              ])))),
+          ])),
+        ]));
   }
 
-  Widget sidebar() => Container(
-    color: Colors.white,
-    padding: const EdgeInsets.fromLTRB(20, 30, 20, 24),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: honey,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(Icons.hive_outlined, size: 27, color: ink),
-            ),
-            const SizedBox(width: 10),
-            const Text(
-              'BeeHome',
-              style: TextStyle(
-                fontSize: 27,
-                fontWeight: FontWeight.w800,
-                color: ink,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        const Text(
-          'Chăm nhà gọn. Sống thảnh thơi.',
-          style: TextStyle(fontSize: 11, color: muted),
-        ),
-        const SizedBox(height: 38),
-        Text(
-          s.admin ? 'KHÔNG GIAN QUẢN TRỊ' : 'TỔ ẤM CỦA BẠN',
-          style: const TextStyle(
-            color: muted,
-            fontSize: 10,
-            letterSpacing: 1.5,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 14),
+  Widget sidebar() => ColoredBox(
+      color: const Color(0xEE193D33),
+      child: SafeArea(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 14, 10),
+            child: Text(roleLabel,
+                style: const TextStyle(
+                    color: Color(0xFFD0DED3),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600))),
         Expanded(
-          child: ListView(
-            children: nav
-                .map(
-                  (n) => Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: ListTile(
-                      dense: true,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      selected: page == n.$1,
-                      selectedTileColor: const Color(0xFFFFF2CD),
-                      selectedColor: ink,
-                      leading: Icon(n.$3, size: 21),
-                      title: Text(
-                        n.$2,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      onTap: () {
-                        go(n.$1);
-                      },
-                    ),
-                  ),
-                )
-                .toList(),
-          ),
-        ),
-        if (!s.live) ...[
-          const Divider(),
-          const Text(
-            'Chuyển vai trò để xem demo',
-            style: TextStyle(fontSize: 11, color: muted),
-          ),
-          DropdownButton<String>(
-            isExpanded: true,
-            value: s.role,
-            items: const [
-              DropdownMenuItem(value: 'customer', child: Text('Khách hàng')),
-              DropdownMenuItem(value: 'worker', child: Text('Người giúp việc')),
-              DropdownMenuItem(value: 'admin', child: Text('Quản trị viên')),
-            ],
-            onChanged: (v) {
-              s.demoRole(v!);
-              go(
-                v == 'admin'
-                    ? 'dashboard'
-                    : v == 'worker'
-                    ? 'profile'
-                    : 'services',
-              );
-            },
-          ),
-          TextButton.icon(
-            onPressed: () => confirm(
-              'Khôi phục dữ liệu demo?',
-              'Các thay đổi thử nghiệm trên trình duyệt này sẽ được thay bằng dữ liệu mẫu.',
-              () => task(s.reset),
-            ),
-            icon: const Icon(Icons.restart_alt, size: 17),
-            label: const Text('Đặt lại demo'),
-          ),
-        ],
-      ],
-    ),
-  );
+            child: ListView(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                children: [
+              for (final n in nav)
+                Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Material(
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(13)),
+                        clipBehavior: Clip.antiAlias,
+                        color: page == n.$1
+                            ? const Color(0xFFE7EEDA)
+                            : Colors.transparent,
+                        child: ListTile(
+                            selected: page == n.$1,
+                            selectedColor: ink,
+                            contentPadding:
+                                const EdgeInsets.symmetric(horizontal: 12),
+                            textColor: Colors.white,
+                            iconColor: Colors.white,
+                            leading: Icon(n.$3, size: 21),
+                            title: Text(n.$2,
+                                style: const TextStyle(
+                                    fontSize: 14, fontWeight: FontWeight.w600)),
+                            onTap: () => go(n.$1)))),
+            ])),
+        Divider(color: Colors.white.withValues(alpha: .2)),
+        Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 12, 12),
+            child: Row(children: [
+              Expanded(
+                  child: Text('${s.profile['name'] ?? 'Tài khoản'}',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.w600))),
+              if (s.live)
+                const IconTheme(
+                    data: IconThemeData(color: Colors.white),
+                    child: LogoutButton()),
+            ])),
+      ])));
+
   Widget content() => switch (page) {
-    'addresses' => addresses(),
-    'profile' => profile(),
-    'workers' => workers(),
-    'orders' => orders(),
-    'reviews' => reviews(),
-    'notifications' => notifications(),
-    'dashboard' => dashboard(),
-    'manage_services' => manageServices(),
-    'users' => users(),
-    _ => services(),
-  };
+        'home' => HomePage(
+            services: s.rows('services'),
+            onService: details,
+            onExplore: s.role == 'worker' ? null : () => go('services'),
+            actionLabel: s.admin
+                ? 'Tổng quan vận hành'
+                : s.role == 'worker'
+                    ? 'Công việc của tôi'
+                    : 'Đơn của tôi',
+            onAction: () => go(s.admin ? 'dashboard' : 'orders')),
+        'addresses' => addresses(),
+        'profile' => profile(),
+        'workers' => workers(),
+        'orders' => orders(),
+        'reviews' => reviews(),
+        'notifications' => notifications(),
+        'dashboard' => dashboard(),
+        'manage_services' => manageServices(),
+        'users' => users(),
+        _ => ServiceCatalog(
+            records: s.rows('services'),
+            onDetails: details,
+            onManage: s.admin ? () => go('manage_services') : null),
+      };
   Widget heading(String title, String subtitle, {Widget? action}) => Padding(
-    padding: const EdgeInsets.only(bottom: 25),
-    child: Wrap(
-      alignment: WrapAlignment.spaceBetween,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: 24,
-      runSpacing: 14,
-      children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        padding: const EdgeInsets.only(bottom: 25),
+        child: Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 24,
+          runSpacing: 14,
           children: [
-            Text(title, style: Theme.of(context).textTheme.headlineMedium),
-            const SizedBox(height: 7),
-            Text(subtitle, style: const TextStyle(color: muted)),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: Theme.of(context).textTheme.headlineMedium),
+                const SizedBox(height: 7),
+                Text(subtitle, style: const TextStyle(color: muted)),
+              ],
+            ),
+            if (action != null) action,
           ],
         ),
-        if (action != null) action,
-      ],
-    ),
-  );
-  Widget grid(List<Widget> children, {double width = 320}) => LayoutBuilder(
-    builder: (c, b) {
-      final cols = (b.maxWidth / (width + 18)).floor().clamp(1, 4);
-      final w = (b.maxWidth - (cols - 1) * 18) / cols;
-      return Wrap(
-        spacing: 18,
-        runSpacing: 18,
-        children: children.map((e) => SizedBox(width: w, child: e)).toList(),
       );
-    },
-  );
-  Widget select(String value, List<String> opts, ValueChanged<String> change) =>
-      DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: value,
-          items: opts
-              .map(
-                (v) => DropdownMenuItem(
-                  value: v,
-                  child: Text(v, style: const TextStyle(fontSize: 14)),
-                ),
-              )
-              .toList(),
-          onChanged: (v) => change(v!),
-        ),
+  Widget grid(List<Widget> children, {double width = 320}) => LayoutBuilder(
+        builder: (c, b) {
+          final cols = (b.maxWidth / (width + 18)).floor().clamp(1, 4);
+          final w = (b.maxWidth - (cols - 1) * 18) / cols;
+          return Wrap(
+            spacing: 18,
+            runSpacing: 18,
+            children: children
+                .map((e) => SizedBox(key: e.key, width: w, child: e))
+                .toList(),
+          );
+        },
       );
   IconData serviceIcon(RecordData r) => r['icon'] == 'laundry'
       ? Icons.local_laundry_service_outlined
       : r['icon'] == 'sparkles'
-      ? Icons.auto_awesome_outlined
-      : Icons.cottage_outlined;
-  Widget services() {
-    var list = s
-        .rows('services')
-        .where(
-          (r) =>
-              r['active'] == true &&
-              folded(r['name']).contains(folded(search)) &&
-              (category == 'Tất cả' || r['category'] == category) &&
-              (unit == 'Tất cả' || r['unit'] == unit) &&
-              (r['price'] as num) <= maxPrice,
-        )
-        .toList();
-    if (sort != 'Đề xuất') {
-      list.sort(
-        (a, b) =>
-            (a['price'] as num).compareTo(b['price'] as num) *
-            (sort == 'Giá tăng dần' ? 1 : -1),
-      );
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(30),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF9EDC8),
-            borderRadius: BorderRadius.circular(24),
-          ),
-          child: LayoutBuilder(
-            builder: (c, b) => Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Tag('THÊM THỜI GIAN CHO ĐIỀU BẠN YÊU'),
-                      const SizedBox(height: 19),
-                      Text(
-                        'Nhà gọn hơn.\nNgày nhẹ nhàng hơn.',
-                        style: Theme.of(c).textTheme.headlineLarge
-                            ?.copyWith(fontSize: b.maxWidth < 600 ? 30 : 42),
-                      ),
-                      const SizedBox(height: 14),
-                      const Text(
-                        'Tìm dịch vụ phù hợp với tổ ấm của bạn.\nPhạm vi rõ ràng, lựa chọn dễ dàng.',
-                        style: TextStyle(color: muted),
-                      ),
-                      const SizedBox(height: 21),
-                      Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        children: [
-                          FilledButton.icon(
-                            onPressed: () => guide(),
-                            icon: const Icon(Icons.tune, size: 18),
-                            label: const Text('Tìm dịch vụ phù hợp'),
-                          ),
-                          OutlinedButton(
-                            onPressed: () => go('workers'),
-                            child: const Text('Gặp người giúp việc'),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                if (b.maxWidth > 720)
-                  const SizedBox(width: 300, height: 230, child: HouseArt()),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 28),
-        heading(
-          'Một chút giúp đỡ, nhiều thảnh thơi',
-          'Dịch vụ cho từng nhu cầu trong ngôi nhà của bạn.',
-        ),
-        Panel(
-          padding: 16,
-          child: Column(
-            children: [
-              TextField(
-                controller: searchController,
-                onChanged: (v) => setState(() => search = v),
-                decoration: const InputDecoration(
-                  hintText: 'Bạn cần giúp việc gì hôm nay?',
-                  prefixIcon: Icon(Icons.search),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 24,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  select(category, [
-                    'Tất cả',
-                    'Dọn dẹp',
-                    'Giặt ủi',
-                  ], (v) => setState(() => category = v)),
-                  select(
-                    unit,
-                    ['Tất cả', 'giờ', 'gói'],
-                    (v) => setState(() {
-                      unit = v;
-                      sort = 'Đề xuất';
-                    }),
-                  ),
-                  select(
-                    sort,
-                    unit == 'Tất cả'
-                        ? ['Đề xuất']
-                        : ['Đề xuất', 'Giá tăng dần', 'Giá giảm dần'],
-                    (v) => setState(() => sort = v),
-                  ),
-                  SizedBox(
-                    width: 240,
-                    child: Column(
-                      children: [
-                        Text(
-                          'Đơn giá tối đa: ${money(maxPrice)}',
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                        Slider(
-                          value: maxPrice,
-                          min: 50000,
-                          max: 1000000,
-                          divisions: 19,
-                          onChanged: (v) => setState(() => maxPrice = v),
-                        ),
-                      ],
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () => setState(() {
-                      category = 'Tất cả';
-                      unit = 'Tất cả';
-                      sort = 'Đề xuất';
-                      maxPrice = 1000000;
-                      search = '';
-                    }),
-                    child: const Text('Xóa bộ lọc'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 18),
-        Row(
-          children: [
-            Text(
-              '${list.length} dịch vụ',
-              style: const TextStyle(color: muted),
-            ),
-            const Spacer(),
-            if (selected.isNotEmpty)
-              TextButton.icon(
-                onPressed: compare,
-                icon: const Icon(Icons.compare_arrows),
-                label: Text('So sánh (${selected.length}/3)'),
-              ),
-          ],
-        ),
-        const SizedBox(height: 15),
-        if (list.isEmpty)
-          const EmptyView(
-            'Không tìm thấy dịch vụ',
-            'Thử thay đổi từ khóa hoặc xóa bộ lọc.',
-          )
-        else
-          grid(list.map(serviceCard).toList()),
-      ],
-    );
-  }
-
-  Widget serviceCard(RecordData r) => Panel(
-    padding: 0,
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          height: 145,
-          decoration: const BoxDecoration(
-            color: Color(0xFFEEF2E7),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Stack(
-            children: [
-              Center(
-                child: (r['imageUrl'] ?? '').toString().startsWith('https://')
-                    ? Image.network(
-                        r['imageUrl'],
-                        width: double.infinity,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) =>
-                            Icon(serviceIcon(r), size: 70, color: ink),
-                      )
-                    : Icon(serviceIcon(r), size: 70, color: ink),
-              ),
-              Positioned(left: 16, top: 15, child: Tag(r['tag'] ?? 'BeeHome')),
-              Positioned(
-                right: 10,
-                bottom: 7,
-                child: Checkbox(
-                  value: selected.contains(r['id']),
-                  semanticLabel: 'So sánh ${r['name']}',
-                  onChanged: (v) => setState(() {
-                    if (v == true) {
-                      if (selected.length < 3) {
-                        selected.add(r['id']);
-                      } else {
-                        toast('Chọn tối đa 3 dịch vụ.');
-                      }
-                    } else {
-                      selected.remove(r['id']);
-                    }
-                  }),
-                ),
-              ),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.all(21),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(r['name'], style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 9),
-              Text(
-                r['description'],
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: muted, fontSize: 13),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                '${money(r['price'])} / ${r['unit']}',
-                style: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 22,
-                ),
-              ),
-              const SizedBox(height: 5),
-              Text(
-                'Tối thiểu ${r['duration']} giờ${s.live ? '' : ' · Giá minh họa'}',
-                style: const TextStyle(fontSize: 11, color: muted),
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: () => details(r),
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Khám phá dịch vụ'),
-                      Icon(Icons.arrow_forward, size: 18),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    ),
-  );
+          ? Icons.auto_awesome_outlined
+          : Icons.cottage_outlined;
   Future<void> modal(String title, Widget body, {List<Widget>? actions}) =>
       showDialog<void>(
         context: context,
@@ -693,8 +405,7 @@ class _BeeShellState extends State<BeeShell> {
             width: 620,
             child: SingleChildScrollView(child: body),
           ),
-          actions:
-              actions ??
+          actions: actions ??
               [
                 TextButton(
                   onPressed: () => Navigator.pop(c),
@@ -704,114 +415,62 @@ class _BeeShellState extends State<BeeShell> {
         ),
       );
   void details(RecordData r) {
+    final includes = (r['includes'] is List ? r['includes'] as List : const [])
+        .where((v) => '$v'.trim().isNotEmpty);
+    final excludes = (r['excludes'] is List ? r['excludes'] as List : const [])
+        .where((v) => '$v'.trim().isNotEmpty);
+    final canBook = s.role == 'customer' &&
+        r['active'] == true &&
+        r['price'] is num &&
+        r['duration'] is num;
     modal(
-      r['name'],
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(r['description']),
-          const SizedBox(height: 20),
-          Text(
-            '${money(r['price'])} / ${r['unit']}',
-            style: Theme.of(context).textTheme.headlineMedium,
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            'Công việc bao gồm',
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          ...(r['includes'] as List).map(
-            (x) => ListTile(
-              dense: true,
-              leading: const Icon(Icons.check_circle_outline, color: ink),
-              title: Text('$x'),
-            ),
-          ),
-          const Text(
-            'Không bao gồm',
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          ...(r['excludes'] as List).map(
-            (x) => ListTile(
-              dense: true,
-              leading: const Icon(Icons.remove_circle_outline, color: muted),
-              title: Text('$x'),
-            ),
-          ),
-          const Text(
-            'Phạm vi thử nghiệm: TP. Hồ Chí Minh. Giá cuối cùng cần được backend xác nhận khi đặt dịch vụ.',
-            style: TextStyle(color: muted, fontSize: 12),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Đóng'),
-        ),
-        FilledButton(
-          onPressed: () {
-            Navigator.pop(context);
-            booking(r);
-          },
-          child: const Text('Chọn dịch vụ'),
-        ),
-      ],
-    );
-  }
-
-  void compare() {
-    final rs = s
-        .rows('services')
-        .where((r) => selected.contains(r['id']))
-        .toList();
-    modal(
-      'So sánh dịch vụ',
-      Column(
-        children: rs
-            .map(
-              (r) => ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(r['name']),
-                subtitle: Text(
-                  '${money(r['price'])}/${r['unit']} · ${r['duration']} giờ\n${(r['includes'] as List).join(' · ')}',
-                ),
-                isThreeLine: true,
-              ),
-            )
-            .toList(),
-      ),
-    );
-  }
-
-  void guide() {
-    modal(
-      'Chọn theo nhu cầu của bạn',
-      Column(
-        children:
-            [
-                  ('Dọn dẹp thường xuyên', 's1'),
-                  ('Cần làm sạch toàn diện', 's2'),
-                  ('Cần chăm sóc quần áo', 's3'),
-                ]
-                .map(
-                  (x) => ListTile(
-                    title: Text(x.$1),
-                    trailing: const Icon(Icons.arrow_forward),
-                    onTap: () {
-                      Navigator.pop(context);
-                      final r = s.find('services', x.$2);
-                      if (r != null && r['active'] == true) {
-                        details(r);
-                      } else {
-                        toast('Dịch vụ này hiện chưa được cung cấp.');
-                      }
-                    },
-                  ),
-                )
-                .toList(),
-      ),
-    );
+        '${r['name'] ?? 'Chi tiết dịch vụ'}',
+        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          if ((r['description'] ?? '').toString().isNotEmpty)
+            Text('${r['description']}'),
+          const SizedBox(height: 14),
+          if (r['price'] is num)
+            InfoLine(Icons.payments_outlined, 'Đơn giá',
+                '${money(r['price'])} / ${r['unit'] ?? ''}'),
+          if (r['duration'] != null)
+            InfoLine(
+                Icons.schedule,
+                r['unit'] == 'giờ' ? 'Thời lượng gợi ý' : 'Thời lượng',
+                '${r['duration']} giờ'),
+          for (final group in [
+            ('Công việc bao gồm', includes, Icons.check_circle_outline),
+            ('Không bao gồm', excludes, Icons.remove_circle_outline)
+          ]) ...[
+            if (group.$2.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(group.$1,
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+              for (final item in group.$2)
+                Padding(
+                    padding: const EdgeInsets.only(top: 7),
+                    child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(group.$3, size: 18, color: forest),
+                          const SizedBox(width: 9),
+                          Expanded(child: Text('$item'))
+                        ]))
+            ],
+          ],
+        ]),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Đóng')),
+          if (canBook)
+            FilledButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  booking(r);
+                },
+                icon: const Icon(Icons.calendar_month_outlined, size: 18),
+                label: const Text('Đặt lịch')),
+        ]);
   }
 
   void booking(RecordData r) {
@@ -830,7 +489,8 @@ class _BeeShellState extends State<BeeShell> {
       context: context,
       builder: (c) => StatefulBuilder(
         builder: (c, set) => AlertDialog(
-          title: const Text('Chuẩn bị yêu cầu đặt dịch vụ'),
+          scrollable: true,
+          title: const Text('Địa chỉ và thời lượng'),
           content: SizedBox(
             width: 480,
             child: Column(
@@ -840,7 +500,7 @@ class _BeeShellState extends State<BeeShell> {
                 Text(r['name'], style: Theme.of(c).textTheme.titleLarge),
                 const SizedBox(height: 18),
                 DropdownButtonFormField<String>(
-                  value: aid,
+                  initialValue: aid,
                   isExpanded: true,
                   items: own
                       .map(
@@ -858,10 +518,11 @@ class _BeeShellState extends State<BeeShell> {
                 ),
                 const SizedBox(height: 15),
                 if (r['unit'] == 'giờ')
-                  Row(
+                  Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 4,
                     children: [
                       const Text('Thời lượng'),
-                      const Spacer(),
                       IconButton(
                         onPressed: hours > (r['duration'] as num)
                             ? () => set(() => hours--)
@@ -882,7 +543,7 @@ class _BeeShellState extends State<BeeShell> {
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  'Bạn sẽ chọn lịch và xác nhận giá ở bước đặt dịch vụ. Bản demo hiện chỉ chuẩn bị yêu cầu, chưa tạo đơn.',
+                  'Bước tiếp theo, chọn ngày và giờ làm việc.',
                   style: TextStyle(fontSize: 12, color: muted),
                 ),
               ],
@@ -901,18 +562,14 @@ class _BeeShellState extends State<BeeShell> {
                   'duration': hours,
                 };
                 Navigator.pop(c);
-                if (widget.onBookingRequested != null) {
-                  widget.onBookingRequested!(draft);
+                final proceed = widget.onBookingRequested;
+                if (proceed == null) {
+                  startBooking(s, draft);
                 } else {
-                  modal(
-                    'Yêu cầu đã sẵn sàng',
-                    SelectableText(
-                      'Dịch vụ: ${r['name']}\nMã dịch vụ: ${r['id']}\nMã địa chỉ: $aid\nThời lượng: $hours giờ\n\nChưa có đơn mới. Luồng đặt lịch sẽ được bổ sung khi hoàn tất tích hợp.',
-                    ),
-                  );
+                  proceed(draft);
                 }
               },
-              child: const Text('Tiếp tục'),
+              child: const Text('Chọn ngày làm'),
             ),
           ],
         ),
@@ -950,14 +607,13 @@ class _BeeShellState extends State<BeeShell> {
     Set<String> numbers = const {},
   }) {
     final key = GlobalKey<FormState>();
-    final cs = initial.map(
-      (k, v) => MapEntry(k, TextEditingController(text: v)),
-    );
+    final values = {...initial};
+    bool saving = false;
+    String? message;
     showDialog<void>(
       context: context,
+      barrierDismissible: false,
       builder: (c) {
-        bool saving = false;
-        String? message;
         return StatefulBuilder(
           builder: (c, set) => AlertDialog(
             title: Text(title),
@@ -981,9 +637,9 @@ class _BeeShellState extends State<BeeShell> {
                         (e) => Padding(
                           padding: const EdgeInsets.only(bottom: 16),
                           child: TextFormField(
-                            controller: cs[e.key],
-                            maxLines:
-                                e.key == 'description' ||
+                            initialValue: initial[e.key],
+                            onChanged: (v) => values[e.key] = v.trim(),
+                            maxLines: e.key == 'description' ||
                                     e.key == 'bio' ||
                                     e.key == 'includes' ||
                                     e.key == 'excludes'
@@ -995,22 +651,35 @@ class _BeeShellState extends State<BeeShell> {
                             decoration: InputDecoration(labelText: e.value),
                             validator: (v) {
                               v = v?.trim() ?? '';
-                              if (v.isEmpty && !optional.contains(e.key))
+                              if (v.isEmpty && !optional.contains(e.key)) {
                                 return 'Vui lòng nhập ${e.value.toLowerCase()}';
-                              if (v.length > 1500)
-                                return 'Nội dung tối đa 1.500 ký tự';
+                              }
+                              final limit = switch (e.key) {
+                                'label' => 80,
+                                'contact' || 'area' => 120,
+                                'detail' => 400,
+                                'note' || 'reason' => 500,
+                                'name' => 150,
+                                _ => 1500
+                              };
+                              if (v.length > limit) {
+                                return 'Tối đa $limit ký tự';
+                              }
                               if (numbers.contains(e.key) &&
                                   (num.tryParse(v) == null ||
-                                      num.parse(v) <= 0))
+                                      num.parse(v) <= 0)) {
                                 return 'Nhập số lớn hơn 0';
+                              }
                               if (e.key == 'phone' &&
-                                  !RegExp(r'^0\d{9}$').hasMatch(v))
+                                  !RegExp(r'^0\d{9}$').hasMatch(v)) {
                                 return 'Số điện thoại gồm 10 số, bắt đầu bằng 0';
+                              }
                               if ((e.key == 'imageUrl' ||
                                       e.key == 'avatarUrl') &&
                                   v.isNotEmpty &&
-                                  !v.startsWith('https://'))
+                                  !v.startsWith('https://')) {
                                 return 'Dùng liên kết ảnh HTTPS';
+                              }
                               return null;
                             },
                           ),
@@ -1034,16 +703,19 @@ class _BeeShellState extends State<BeeShell> {
                         set(() => saving = true);
                         try {
                           await save(
-                            cs.map((k, v) => MapEntry(k, v.text.trim())),
+                            values,
                           );
                           if (c.mounted) {
                             Navigator.pop(c);
                             toast('Đã lưu thay đổi');
                           }
                         } catch (e) {
-                          if (c.mounted) set(() => message = e.toString());
-                        } finally {
-                          if (c.mounted) set(() => saving = false);
+                          if (c.mounted) {
+                            set(() {
+                              message = beeError(e);
+                              saving = false;
+                            });
+                          }
                         }
                       },
                 child: Text(saving ? 'Đang lưu…' : 'Lưu thay đổi'),
@@ -1052,24 +724,18 @@ class _BeeShellState extends State<BeeShell> {
           ),
         );
       },
-    ).then((_) {
-      for (final c in cs.values) {
-        c.dispose();
-      }
-    });
+    );
   }
 
   Widget addresses() {
-    final list = s
-        .rows('addresses')
-        .where((a) => a['userId'] == s.uid)
-        .toList();
+    final list =
+        s.rows('addresses').where((a) => a['userId'] == s.uid).toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         heading(
           'Địa chỉ của tôi',
-          'Để BeeHome tìm đến đúng tổ ấm của bạn.',
+          'Chọn địa chỉ mặc định để đặt lịch nhanh hơn.',
           action: FilledButton.icon(
             onPressed: () => editAddress(),
             icon: const Icon(Icons.add),
@@ -1086,6 +752,8 @@ class _BeeShellState extends State<BeeShell> {
             list
                 .map(
                   (a) => Panel(
+                    key: ValueKey(a['id']),
+                    reveal: true,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1181,26 +849,6 @@ class _BeeShellState extends State<BeeShell> {
     );
   }
 
-  Widget profileAvatar(RecordData p) {
-    final url = (p['avatarUrl'] ?? '').toString();
-    return CircleAvatar(
-      radius: 35,
-      backgroundColor: honey,
-      child: url.startsWith('https://')
-          ? ClipOval(
-              child: Image.network(
-                url,
-                width: 70,
-                height: 70,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) =>
-                    const Icon(Icons.person_outline, size: 40, color: ink),
-              ),
-            )
-          : const Icon(Icons.person_outline, size: 40, color: ink),
-    );
-  }
-
   Widget profile() {
     final p = s.profile;
     final w = s.find('worker_profiles', s.uid);
@@ -1209,14 +857,14 @@ class _BeeShellState extends State<BeeShell> {
       children: [
         heading(
           'Hồ sơ của tôi',
-          'Thông tin chính xác giúp mọi trải nghiệm thuận tiện hơn.',
+          'Cập nhật thông tin liên hệ và ảnh đại diện.',
         ),
         grid([
           Panel(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                profileAvatar(p),
+                AccountAvatar(profile: p),
                 const SizedBox(height: 18),
                 Text(p['name'], style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 8),
@@ -1227,19 +875,16 @@ class _BeeShellState extends State<BeeShell> {
                   onPressed: () => form(
                     'Chỉnh sửa hồ sơ',
                     {
-                      for (final k in ['name', 'phone', 'avatarUrl'])
-                        k: '${p[k] ?? ''}',
+                      for (final k in ['name', 'phone']) k: '${p[k] ?? ''}',
                     },
                     {
                       'name': 'Họ tên',
                       'phone': 'Số điện thoại',
-                      'avatarUrl': 'Liên kết ảnh đại diện HTTPS',
                     },
                     (v) => s.save(
                       'users',
                       s.live ? {'id': s.uid, ...v} : {...p, ...v},
                     ),
-                    optional: {'avatarUrl'},
                   ),
                   icon: const Icon(Icons.edit_outlined, size: 18),
                   label: const Text('Chỉnh sửa hồ sơ'),
@@ -1252,12 +897,12 @@ class _BeeShellState extends State<BeeShell> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Không gian cá nhân',
+                  'Tài khoản',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
                 ),
                 const SizedBox(height: 15),
-                const Text(
-                  'Thông tin liên hệ chỉ được dùng trong phạm vi tài khoản và công việc liên quan.',
+                Text(
+                  'Vai trò · $roleLabel',
                 ),
                 const SizedBox(height: 18),
                 if (s.role == 'customer')
@@ -1266,15 +911,12 @@ class _BeeShellState extends State<BeeShell> {
                     icon: const Icon(Icons.location_on_outlined),
                     label: const Text('Quản lý địa chỉ'),
                   ),
-                const SizedBox(height: 10),
-                const Text(
-                  'Các thay đổi email và mật khẩu được thực hiện trong phần bảo mật tài khoản sau khi tích hợp.',
-                  style: TextStyle(fontSize: 12, color: muted),
-                ),
               ],
             ),
           ),
         ], width: 400),
+        const SizedBox(height: 18),
+        AccountPreferences(store: s),
         if (s.role == 'worker') ...[
           const SizedBox(height: 24),
           Panel(
@@ -1292,7 +934,9 @@ class _BeeShellState extends State<BeeShell> {
                         ),
                       ),
                     ),
-                    Tag(statusLabel(w?['approval'] ?? 'pending')),
+                    Tag(w?['approval'] == null || w?['approval'] == 'pending'
+                        ? 'Chờ duyệt'
+                        : statusLabel(w?['approval'])),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -1343,7 +987,7 @@ class _BeeShellState extends State<BeeShell> {
         .where(
           (w) =>
               (s.admin || w['approval'] == 'approved') &&
-              folded(w['name']).contains(folded(search)),
+              folded('${w['name'] ?? ''}').contains(folded(search)),
         )
         .toList();
     return Column(
@@ -1353,7 +997,7 @@ class _BeeShellState extends State<BeeShell> {
           s.admin ? 'Duyệt người giúp việc' : 'Người giúp việc BeeHome',
           s.admin
               ? 'Kiểm tra hồ sơ trước khi cho phép nhận việc.'
-              : 'Kỹ năng rõ ràng. Trải nghiệm được ghi nhận.',
+              : 'Xem kỹ năng, khu vực hoạt động và đánh giá từ các đơn đã hoàn thành.',
         ),
         TextField(
           controller: searchController,
@@ -1371,6 +1015,8 @@ class _BeeShellState extends State<BeeShell> {
             list
                 .map(
                   (w) => Panel(
+                    key: ValueKey(w['id']),
+                    reveal: true,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1390,16 +1036,26 @@ class _BeeShellState extends State<BeeShell> {
                           ],
                         ),
                         const SizedBox(height: 15),
-                        Tag(statusLabel(w['approval'])),
+                        Tag(
+                            w['approval'] == 'pending'
+                                ? 'Chờ duyệt'
+                                : statusLabel(w['approval']),
+                            color: statusColor(w['approval'])),
                         const SizedBox(height: 12),
                         Text(
-                          '${w['experience']} kinh nghiệm · ${w['area']}',
+                          [
+                            if ((w['experience'] ?? '').toString().isNotEmpty)
+                              '${w['experience']} kinh nghiệm',
+                            if ((w['area'] ?? '').toString().isNotEmpty)
+                              '${w['area']}'
+                          ].join(' · '),
                           style: const TextStyle(color: muted, fontSize: 13),
                         ),
                         const SizedBox(height: 12),
-                        Text(w['skills']),
+                        if ((w['skills'] ?? '').toString().isNotEmpty)
+                          Text('${w['skills']}'),
                         Text(
-                          w['bio'],
+                          '${w['bio'] ?? ''}',
                           style: const TextStyle(color: muted, fontSize: 13),
                         ),
                         const SizedBox(height: 16),
@@ -1409,7 +1065,7 @@ class _BeeShellState extends State<BeeShell> {
                               : '★ ${(w['rating'] as num).toStringAsFixed(1)} · ${w['reviewCount']} đánh giá',
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
-                        if (s.admin) ...[
+                        if (s.admin && w['approval'] == 'pending') ...[
                           const SizedBox(height: 15),
                           Wrap(
                             spacing: 8,
@@ -1418,8 +1074,8 @@ class _BeeShellState extends State<BeeShell> {
                                 onPressed: w['approval'] == 'approved'
                                     ? null
                                     : () => task(
-                                        () => s.approve(w['id'], true, ''),
-                                      ),
+                                          () => s.approve(w['id'], true, ''),
+                                        ),
                                 child: const Text('Duyệt'),
                               ),
                               OutlinedButton(
@@ -1447,141 +1103,214 @@ class _BeeShellState extends State<BeeShell> {
   }
 
   Widget orders() {
-    final list = s
-        .rows('orders')
-        .where(
-          (o) =>
-              (s.admin ||
-                  o[s.role == 'worker' ? 'workerId' : 'customerId'] == s.uid ||
-                  (s.role == 'worker' && o['status'] == 'pending')) &&
-              (orderFilter == 'Tất cả' || o['status'] == orderFilter) &&
-              folded('${o['id']} ${o['serviceName']}').contains(folded(search)),
-        )
+    final own = [
+      ...s.rows('orders'),
+      if (s.role == 'worker')
+        ...s.rows('job_offers').where((o) => s.find('orders', o['id']) == null)
+    ]
+        .where((o) =>
+            s.admin ||
+            o[s.role == 'worker' ? 'workerId' : 'customerId'] == s.uid ||
+            (s.role == 'worker' && o['status'] == 'pending'))
         .toList();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        heading(
-          s.admin ? 'Quản lý đơn hàng' : 'Đơn dịch vụ của tôi',
-          'Theo dõi thông tin và trạng thái trong một nơi.',
-        ),
-        Wrap(
-          spacing: 20,
-          runSpacing: 12,
-          children: [
-            SizedBox(
-              width: 300,
-              child: TextField(
-                controller: searchController,
-                onChanged: (v) => setState(() => search = v),
-                decoration: const InputDecoration(
-                  hintText: 'Tìm mã đơn, dịch vụ',
-                  prefixIcon: Icon(Icons.search),
-                ),
-              ),
-            ),
-            DropdownButton<String>(
-              value: orderFilter,
-              items:
-                  [
-                        'Tất cả',
-                        'pending',
-                        'accepted',
-                        'working',
-                        'completed',
-                        'cancelled',
-                      ]
-                      .map(
-                        (v) => DropdownMenuItem(
-                          value: v,
-                          child: Text(v == 'Tất cả' ? v : statusLabel(v)),
-                        ),
-                      )
-                      .toList(),
-              onChanged: (v) => setState(() => orderFilter = v!),
-            ),
-          ],
-        ),
-        const SizedBox(height: 20),
-        if (list.isEmpty)
-          const EmptyView(
-            'Chưa có đơn phù hợp',
-            'Các đơn dịch vụ sẽ xuất hiện tại đây.',
-          )
-        else
-          ...list.map(
-            (o) => Padding(
-              padding: const EdgeInsets.only(bottom: 14),
-              child: Panel(
-                padding: 20,
-                child: Wrap(
-                  spacing: 20,
-                  runSpacing: 15,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    SizedBox(
-                      width: 270,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            o['serviceName'],
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                          Text(
-                            '${o['id']} · ${o['date']}',
-                            style: const TextStyle(color: muted, fontSize: 13),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Tag(statusLabel(o['status'])),
-                    Text(
-                      money(o['total']),
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    OutlinedButton(
-                      onPressed: () => orderDetail(o),
-                      child: const Text('Chi tiết'),
-                    ),
-                    OrderButtons(store: s, order: o),
-                    if (o['customerId'] == s.uid &&
-                        o['status'] == 'completed' &&
-                        s.find('reviews', o['id']) == null)
-                      FilledButton(
-                        onPressed: () => reviewDialog(o),
-                        child: const Text('Đánh giá'),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
+    final list = own
+        .where((o) =>
+            (orderFilter == 'Tất cả' || o['status'] == orderFilter) &&
+            folded("${o['id']} ${o['serviceName']}")
+                .contains(folded(search.trim())))
+        .toList()
+      ..sort((a, b) {
+        if (s.role == 'worker') {
+          final offeredA = a['status'] == 'pending',
+              offeredB = b['status'] == 'pending';
+          if (offeredA != offeredB) return offeredA ? -1 : 1;
+          if (offeredA) {
+            return "${a['date']} ${a['time']}"
+                .compareTo("${b['date']} ${b['time']}");
+          }
+        }
+        return "${b['createdAt'] ?? ''}".compareTo("${a['createdAt'] ?? ''}");
+      });
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      heading(
+          s.admin
+              ? 'Quản lý đơn hàng'
+              : s.role == 'worker'
+                  ? 'Công việc của tôi'
+                  : 'Đơn dịch vụ của tôi',
+          s.role == 'worker' &&
+                  s.find('worker_profiles', s.uid)?['approval'] != 'approved'
+              ? 'Hoàn tất hồ sơ nghề nghiệp và chờ quản trị viên duyệt để xem việc đang mở.'
+              : 'Xem lịch làm việc và tiến độ của từng đơn.'),
+      TextField(
+          controller: searchController,
+          onChanged: (v) => setState(() => search = v),
+          decoration: const InputDecoration(
+              hintText: 'Tìm mã đơn, dịch vụ', prefixIcon: Icon(Icons.search))),
+      const SizedBox(height: 10),
+      SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: [
+            for (final v in [
+              'Tất cả',
+              'pending',
+              'accepted',
+              'working',
+              'completed',
+              'cancelled'
+            ])
+              Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: ChoiceChip(
+                      showCheckmark: false,
+                      selected: v == orderFilter,
+                      onSelected: (_) => setState(() => orderFilter = v),
+                      label: Text(v == 'Tất cả' ? v : statusLabel(v)))),
+          ])),
+      const SizedBox(height: 16),
+      if (list.isEmpty)
+        EmptyView(
+            own.isEmpty ? 'Chưa có đơn dịch vụ' : 'Chưa tìm thấy đơn',
+            own.isEmpty
+                ? 'Lịch làm việc sẽ xuất hiện tại đây khi có đơn.'
+                : 'Thử đổi trạng thái hoặc tìm theo mã đơn.',
+            icon: Icons.event_note_outlined,
+            action: own.isEmpty && s.role == 'customer'
+                ? OutlinedButton(
+                    onPressed: () => go('services'),
+                    child: const Text('Xem dịch vụ'))
+                : own.isNotEmpty
+                    ? TextButton(
+                        onPressed: () => setState(() {
+                              searchController.clear();
+                              search = '';
+                              orderFilter = 'Tất cả';
+                            }),
+                        child: const Text('Hiện tất cả đơn'))
+                    : null),
+      for (final o in list)
+        Padding(
+            key: ValueKey(o['id']),
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Panel(
+                reveal: true,
+                padding: 18,
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Wrap(
+                          alignment: WrapAlignment.spaceBetween,
+                          spacing: 12,
+                          runSpacing: 5,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            Text('Đơn ${o['id']}',
+                                style: const TextStyle(
+                                    color: muted,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12)),
+                            Tag(statusLabel(o['status']),
+                                color: statusColor(o['status'])),
+                          ]),
+                      const SizedBox(height: 10),
+                      Text('${o['serviceName'] ?? 'Dịch vụ'}',
+                          style: Theme.of(context).textTheme.titleLarge),
+                      const SizedBox(height: 10),
+                      Wrap(spacing: 18, runSpacing: 6, children: [
+                        if (displaySchedule(o).isNotEmpty)
+                          Text(displaySchedule(o),
+                              style: const TextStyle(color: muted)),
+                        if (o['total'] is num)
+                          Text(money(o['total']),
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w700)),
+                      ]),
+                      const SizedBox(height: 14),
+                      const Divider(),
+                      const SizedBox(height: 8),
+                      Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            TextButton.icon(
+                                onPressed: () => orderDetail(o),
+                                icon: const Icon(Icons.article_outlined,
+                                    size: 17),
+                                label: const Text('Chi tiết')),
+                            OrderButtons(store: s, order: o),
+                            if (s.live &&
+                                s.admin &&
+                                o['status'] == 'pending' &&
+                                o['inAppVersion'] != 1)
+                              TextButton(
+                                  onPressed: busy
+                                      ? null
+                                      : () => task(
+                                          () => s.publishOffer(o['id']),
+                                          success:
+                                              'Đơn đã mở cho người giúp việc'),
+                                  child: const Text('Mở nhận việc cho đơn cũ')),
+                            if (o['customerId'] == s.uid &&
+                                o['status'] == 'completed' &&
+                                s.find('reviews', o['id']) == null)
+                              FilledButton(
+                                  onPressed: () => reviewDialog(o),
+                                  child: const Text('Đánh giá')),
+                          ]),
+                    ]))),
+    ]);
   }
 
   void orderDetail(RecordData o) => modal(
-    'Đơn ${o['id']}',
-    Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(o['serviceName'], style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 16),
-        Text('Ngày làm: ${o['date']}'),
-        Text('Người giúp việc: ${o['workerName'] ?? 'Chưa có'}'),
-        Text('Địa chỉ lúc đặt: ${o['addressSnapshot']}'),
-        Text('Giá đã chốt: ${money(o['total'])}'),
-        Text('Công việc: ${statusLabel(o['status'])}'),
-        Text('Thanh toán: ${statusLabel(o['paymentStatus'])}'),
-        const SizedBox(height: 20),
-        const Text(
-          'Màn hình hiện hỗ trợ xem thông tin đơn. Các thao tác nhận việc, hủy và cập nhật tiến độ sẽ được mở khi hoàn tất tích hợp.',
-          style: TextStyle(fontSize: 12, color: muted),
-        ),
-      ],
-    ),
-  );
+      'Chi tiết đơn ${o['id']}',
+      Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('${o['serviceName'] ?? 'Dịch vụ'}',
+            style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 8),
+        Align(
+            alignment: Alignment.centerLeft,
+            child:
+                Tag(statusLabel(o['status']), color: statusColor(o['status']))),
+        const SizedBox(height: 12),
+        InfoLine(
+            Icons.calendar_today_outlined, 'Lịch làm việc', displaySchedule(o)),
+        if (o['duration'] != null)
+          InfoLine(Icons.timer_outlined, 'Thời lượng', '${o['duration']} giờ'),
+        InfoLine(Icons.person_outline, 'Người giúp việc',
+            '${o['workerName'] ?? 'Chưa có người nhận'}'),
+        if (o['area'] != null && o['addressSnapshot'] == null)
+          InfoLine(Icons.map_outlined, 'Khu vực', o['area']),
+        if ((o['contactPhone'] ?? '').toString().isNotEmpty)
+          InfoLine(Icons.phone_outlined, 'Người liên hệ',
+              "${o['contactName']} · ${o['contactPhone']}"),
+        if ((o['entryNote'] ?? '').toString().isNotEmpty)
+          InfoLine(
+              Icons.directions_outlined, 'Hướng dẫn tìm nhà', o['entryNote']),
+        if (o['addressSnapshot'] != null)
+          InfoLine(Icons.location_on_outlined, 'Địa chỉ lúc đặt',
+              '${o['addressSnapshot']}'),
+        const Divider(),
+        if (o['total'] is num)
+          InfoLine(Icons.payments_outlined, 'Giá đã chốt', money(o['total'])),
+        if (s.find('payments', o['id']) case final payment?)
+          InfoLine(Icons.request_quote_outlined, 'Phiếu thu tiền mặt',
+              "${payment['orderId']} · ${money(payment['amount'])}"),
+        if (o['paymentStatus'] != null)
+          InfoLine(Icons.receipt_outlined, 'Thanh toán',
+              statusLabel(o['paymentStatus'])),
+      ]));
+
+  String displaySchedule(RecordData order) {
+    final raw = '${order['date'] ?? ''}';
+    final date = DateTime.tryParse(raw);
+    final label = date == null
+        ? raw
+        : '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+    final time = '${order['time'] ?? ''}'.trim();
+    return [label, time].where((s) => s.isNotEmpty).join(' · ');
+  }
+
   Widget reviews() {
     final done = s
         .rows('orders')
@@ -1603,8 +1332,10 @@ class _BeeShellState extends State<BeeShell> {
           ...done.map((o) {
             final r = s.find('reviews', o['id']);
             return Padding(
+              key: ValueKey(o['id']),
               padding: const EdgeInsets.only(bottom: 16),
               child: Panel(
+                reveal: true,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1647,11 +1378,13 @@ class _BeeShellState extends State<BeeShell> {
     int stars = 0;
     String? err;
     bool sending = false;
-    final text = TextEditingController();
+    String comment = '';
     showDialog<void>(
       context: context,
+      barrierDismissible: false,
       builder: (c) => StatefulBuilder(
         builder: (c, set) => AlertDialog(
+          scrollable: true,
           title: Text('Đánh giá ${o['workerName']}'),
           content: SizedBox(
             width: 430,
@@ -1676,7 +1409,7 @@ class _BeeShellState extends State<BeeShell> {
                 ),
                 const SizedBox(height: 18),
                 TextField(
-                  controller: text,
+                  onChanged: (v) => comment = v,
                   maxLines: 4,
                   maxLength: 1000,
                   decoration: const InputDecoration(
@@ -1703,15 +1436,18 @@ class _BeeShellState extends State<BeeShell> {
                       }
                       set(() => sending = true);
                       try {
-                        await s.review(o['id'], stars, text.text);
+                        await s.review(o['id'], stars, comment);
                         if (c.mounted) {
                           Navigator.pop(c);
                           toast('Cảm ơn bạn đã chia sẻ trải nghiệm!');
                         }
                       } catch (e) {
-                        if (c.mounted) set(() => err = '$e');
-                      } finally {
-                        if (c.mounted) set(() => sending = false);
+                        if (c.mounted) {
+                          set(() {
+                            err = beeError(e);
+                            sending = false;
+                          });
+                        }
                       }
                     },
               child: Text(sending ? 'Đang gửi…' : 'Gửi đánh giá'),
@@ -1719,29 +1455,30 @@ class _BeeShellState extends State<BeeShell> {
           ],
         ),
       ),
-    ).then(
-      (_) => Future.delayed(const Duration(milliseconds: 400), text.dispose),
     );
   }
 
   Widget notifications() {
-    final list =
-        s
-            .rows('notifications')
-            .where(
-              (n) => n['userId'] == s.uid && (!unread || n['read'] != true),
-            )
-            .toList()
-          ..sort((a, b) => '${b['createdAt']}'.compareTo('${a['createdAt']}'));
+    final list = s
+        .rows('notifications')
+        .where(
+          (n) => n['userId'] == s.uid && (!unread || n['read'] != true),
+        )
+        .toList()
+      ..sort((a, b) => '${b['createdAt']}'.compareTo('${a['createdAt']}'));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         heading(
           'Thông báo',
-          'Mọi cập nhật về tổ ấm, ngay tại đây.',
+          'Cập nhật về đơn dịch vụ và tài khoản của bạn.',
           action: TextButton.icon(
-            onPressed: () =>
-                task(() => s.markRead(), success: 'Đã đọc tất cả thông báo'),
+            onPressed: s
+                    .rows('notifications')
+                    .any((n) => n['userId'] == s.uid && n['read'] != true)
+                ? () =>
+                    task(() => s.markRead(), success: 'Đã đọc tất cả thông báo')
+                : null,
             icon: const Icon(Icons.done_all),
             label: const Text('Đánh dấu tất cả đã đọc'),
           ),
@@ -1762,12 +1499,13 @@ class _BeeShellState extends State<BeeShell> {
           ],
         ),
         const SizedBox(height: 12),
-        OutlinedButton.icon(
-          onPressed: () =>
-              task(s.enablePush, success: 'Đã bật thông báo trình duyệt'),
-          icon: const Icon(Icons.notifications_active_outlined),
-          label: const Text('Bật thông báo trình duyệt'),
-        ),
+        if (const String.fromEnvironment('FIREBASE_VAPID_KEY').isNotEmpty)
+          OutlinedButton.icon(
+            onPressed: () =>
+                task(s.enablePush, success: 'Đã bật thông báo trình duyệt'),
+            icon: const Icon(Icons.notifications_active_outlined),
+            label: const Text('Bật thông báo trình duyệt'),
+          ),
         const SizedBox(height: 20),
         if (list.isEmpty)
           const EmptyView(
@@ -1777,22 +1515,22 @@ class _BeeShellState extends State<BeeShell> {
         else
           ...list.map(
             (n) => Padding(
+              key: ValueKey(n['id']),
               padding: const EdgeInsets.only(bottom: 12),
               child: Panel(
+                reveal: true,
                 padding: 8,
                 child: ListTile(
                   leading: CircleAvatar(
-                    backgroundColor: n['read'] == true
-                        ? cream
-                        : const Color(0xFFFFE9A3),
+                    backgroundColor:
+                        n['read'] == true ? cream : const Color(0xFFFFE9A3),
                     child: const Icon(Icons.notifications_none, color: ink),
                   ),
                   title: Text(
                     n['title'],
                     style: TextStyle(
-                      fontWeight: n['read'] == true
-                          ? FontWeight.w400
-                          : FontWeight.w700,
+                      fontWeight:
+                          n['read'] == true ? FontWeight.w400 : FontWeight.w700,
                     ),
                   ),
                   subtitle: Text(
@@ -1817,11 +1555,12 @@ class _BeeShellState extends State<BeeShell> {
   }
 
   Widget dashboard() {
-    if (!s.admin)
+    if (!s.admin) {
       return const EmptyView(
         'Không có quyền',
         'Trang này dành cho quản trị viên.',
       );
+    }
     final all = s.rows('orders');
     final done = all.where((o) => o['status'] == 'completed');
     final total = done.fold<num>(0, (v, o) => v + (o['total'] as num));
@@ -1833,8 +1572,8 @@ class _BeeShellState extends State<BeeShell> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         heading(
-          'Chào Ý, BeeHome hôm nay',
-          'Một góc nhìn rõ ràng để vận hành tốt hơn.',
+          'Tổng quan vận hành',
+          'Đơn dịch vụ, khách hàng và hồ sơ cần duyệt.',
           action: OutlinedButton.icon(
             onPressed: () => task(s.reload, success: 'Đã cập nhật dữ liệu'),
             icon: const Icon(Icons.refresh),
@@ -1843,21 +1582,23 @@ class _BeeShellState extends State<BeeShell> {
         ),
         grid(
           [
-                ('Tổng số đơn', '${all.length}', Icons.receipt_long_outlined),
-                (
-                  'Giá trị đơn hoàn thành',
-                  money(total),
-                  Icons.payments_outlined,
-                ),
-                (
-                  'Khách hàng',
-                  '${s.rows('users').where((u) => u['role'] == 'customer').length}',
-                  Icons.people_outline,
-                ),
-                ('Hồ sơ chờ duyệt', '$pending', Icons.fact_check_outlined),
-              ]
+            ('Tổng số đơn', '${all.length}', Icons.receipt_long_outlined),
+            (
+              'Giá trị đơn hoàn thành',
+              money(total),
+              Icons.payments_outlined,
+            ),
+            (
+              'Khách hàng',
+              '${s.rows('users').where((u) => u['role'] == 'customer').length}',
+              Icons.people_outline,
+            ),
+            ('Hồ sơ chờ duyệt', '$pending', Icons.fact_check_outlined),
+          ]
               .map(
                 (x) => Panel(
+                  key: ValueKey(x.$1),
+                  reveal: true,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1963,28 +1704,35 @@ class _BeeShellState extends State<BeeShell> {
   }
 
   Widget manageServices() {
-    if (!s.admin)
+    if (!s.admin) {
       return const EmptyView(
         'Không có quyền',
         'Chỉ quản trị viên được quản lý dịch vụ.',
       );
+    }
     final list = s.rows('services');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         heading(
           'Quản lý dịch vụ',
-          'Một danh mục rõ ràng bắt đầu từ thông tin chính xác.',
+          'Cập nhật giá, phạm vi công việc và trạng thái nhận lịch.',
           action: FilledButton.icon(
             onPressed: () => editService(),
             icon: const Icon(Icons.add),
             label: const Text('Thêm dịch vụ'),
           ),
         ),
+        if (list.isEmpty)
+          const EmptyView('Danh mục đang trống',
+              'Chọn Thêm dịch vụ để nhập thông tin và đơn giá.',
+              icon: Icons.grid_view_outlined),
         ...list.map(
           (r) => Padding(
+            key: ValueKey(r['id']),
             padding: const EdgeInsets.only(bottom: 14),
             child: Panel(
+              reveal: true,
               padding: 18,
               child: Wrap(
                 spacing: 22,
@@ -2042,7 +1790,7 @@ class _BeeShellState extends State<BeeShell> {
     r ??= {
       'name': '',
       'category': 'Dọn dẹp',
-      'price': 75000,
+      'price': '',
       'unit': 'giờ',
       'duration': 2,
       'description': '',
@@ -2079,13 +1827,13 @@ class _BeeShellState extends State<BeeShell> {
         'imageUrl': 'Liên kết ảnh HTTPS',
       },
       (v) async {
-        if (!['giờ', 'gói'].contains(v['unit']))
+        if (!['giờ', 'gói'].contains(v['unit'])) {
           throw StateError('Đơn vị chỉ nhận giờ hoặc gói.');
-        if (!['Dọn dẹp', 'Giặt ủi'].contains(v['category']))
-          throw StateError('Chọn loại Dọn dẹp hoặc Giặt ủi.');
+        }
         final h = int.tryParse(v['duration']!);
-        if (h == null || h < 1 || h > 8)
+        if (h == null || h < 1 || h > 8) {
           throw StateError('Thời lượng phải là số nguyên từ 1 đến 8.');
+        }
         await s.save('services', {
           ...row,
           ...v,
@@ -2107,11 +1855,12 @@ class _BeeShellState extends State<BeeShell> {
   }
 
   Widget users() {
-    if (!s.admin)
+    if (!s.admin) {
       return const EmptyView(
         'Không có quyền',
         'Trang này dành cho quản trị viên.',
       );
+    }
     final list = s
         .rows('users')
         .where(
@@ -2131,10 +1880,16 @@ class _BeeShellState extends State<BeeShell> {
           ),
         ),
         const SizedBox(height: 20),
+        if (list.isEmpty)
+          const EmptyView('Chưa tìm thấy người dùng',
+              'Tài khoản phù hợp với từ khóa sẽ xuất hiện tại đây.',
+              icon: Icons.people_outline),
         ...list.map(
           (u) => Padding(
+            key: ValueKey(u['id']),
             padding: const EdgeInsets.only(bottom: 12),
             child: Panel(
+              reveal: true,
               child: Wrap(
                 spacing: 20,
                 runSpacing: 12,
@@ -2157,25 +1912,28 @@ class _BeeShellState extends State<BeeShell> {
                     u['role'] == 'worker'
                         ? 'Người giúp việc'
                         : u['role'] == 'admin'
-                        ? 'Quản trị viên'
-                        : 'Khách hàng',
+                            ? 'Quản trị viên'
+                            : 'Khách hàng',
                   ),
-                  Tag(statusLabel(u['status'])),
+                  Tag(statusLabel(u['status']),
+                      color: statusColor(u['status'])),
                   TextButton(
-                    onPressed: u['id'] == s.uid
+                    onPressed: u['id'] == s.uid || u['role'] == 'admin'
                         ? null
                         : () => confirm(
-                            u['status'] == 'blocked'
-                                ? 'Mở khóa tài khoản?'
-                                : 'Khóa tài khoản?',
-                            'Thay đổi trạng thái quyền sử dụng tài khoản này.',
-                            () => task(
-                              () => s.setUserStatus(
-                                u['id'],
-                                u['status'] == 'blocked' ? 'active' : 'blocked',
+                              u['status'] == 'blocked'
+                                  ? 'Mở khóa tài khoản?'
+                                  : 'Khóa tài khoản?',
+                              'Thay đổi trạng thái quyền sử dụng tài khoản này.',
+                              () => task(
+                                () => s.setUserStatus(
+                                  u['id'],
+                                  u['status'] == 'blocked'
+                                      ? 'active'
+                                      : 'blocked',
+                                ),
                               ),
                             ),
-                          ),
                     child: Text(
                       u['status'] == 'blocked' ? 'Mở khóa' : 'Khóa tài khoản',
                     ),

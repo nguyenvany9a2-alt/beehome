@@ -1,37 +1,198 @@
 rules_version = '2';
 service cloud.firestore {
- match /databases/{database}/documents {
-  function signed(){return request.auth!=null;}
-  function active(){return signed() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status=='active';}
-  function admin(){return active() && request.auth.token.role=='admin';}
-  function owner(uid){return active() && request.auth.uid==uid;}
-  match /services/{id} {
-   allow read: if resource.data.active==true || admin();
-   allow create,update: if admin() && request.resource.data.name is string && request.resource.data.name.size()>0 && request.resource.data.price is number && request.resource.data.price>0 && request.resource.data.unit in ['giờ','gói'] && request.resource.data.duration is int && request.resource.data.duration>=1 && request.resource.data.duration<=8 && request.resource.data.active is bool;
-   allow delete: if false;
+  match /databases/{database}/documents {
+    function signed() { return request.auth != null; }
+    function self(uid) { return signed() && request.auth.uid == uid; }
+    function user(uid) { return /databases/$(database)/documents/users/$(uid); }
+    function worker(uid) { return /databases/$(database)/documents/worker_profiles/$(uid); }
+    function payment(id){return /databases/$(database)/documents/payments/$(id);}
+    function order(id) { return /databases/$(database)/documents/orders/$(id); }
+    function calendar(uid){return /databases/$(database)/documents/work_calendars/$(uid);}
+    function offer(id) { return /databases/$(database)/documents/job_offers/$(id); }
+    function notified(id,state,uid){
+      let nid=id+'_'+state+'_'+uid;
+      return getAfter(/databases/$(database)/documents/notifications/$(nid)).data.status==state;
+    }
+    function review(id) { return /databases/$(database)/documents/reviews/$(id); }
+    function totals(uid) { return /databases/$(database)/documents/rating_totals/$(uid); }
+    function active() { return signed() && get(user(request.auth.uid)).data.status == 'active'; }
+    function admin() { return active() && request.auth.token.get('role','') == 'admin'; }
+    function role(r) { return active() && get(user(request.auth.uid)).data.role == r; }
+    function approved() { return role('worker') && get(worker(request.auth.uid)).data.approval == 'approved'; }
+    function text(v, min, max) { return v is string && v.size() >= min && v.size() <= max; }
+    function changed(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
+    function party(d) { return active() && (d.customerId == request.auth.uid || d.workerId == request.auth.uid); }
+    match /services/{id} {
+      allow read: if resource.data.active == true || admin();
+      allow create, update: if admin() && text(request.resource.data.name,1,1500)
+        && request.resource.data.price is number && request.resource.data.price > 0
+        && request.resource.data.unit in ['giờ','gói'] && request.resource.data.duration is int
+        && request.resource.data.duration >= 1 && request.resource.data.duration <= 8 && request.resource.data.active is bool;
+    }
+    match /users/{uid} {
+      function profile(d) {
+        return text(d.name,1,150) && d.phone is string && d.phone.matches('0[0-9]{9}');
+      }
+      function appearance(p) {
+        return p is map && p.keys().hasOnly(['scene','tint','scale','still'])
+          && p.scene in ['auto','room','corner','plain'] && p.tint in ['warm','sage','stone']
+          && p.scale in [1,1.15,1.3] && p.still is bool;
+      }
+      allow read: if self(uid) || admin();
+      allow create: if self(uid) && profile(request.resource.data)
+        && request.resource.data.keys().hasOnly(['name','email','phone','role','status','avatarUrl','createdAt'])
+        && request.resource.data.email == request.auth.token.email && request.resource.data.avatarUrl == ''
+        && request.resource.data.status == 'active' && request.resource.data.role in ['customer','worker']
+        && (request.resource.data.role != 'worker' || getAfter(worker(uid)).data.approval == 'pending');
+      allow update: if (self(uid) && active() && changed(['name','phone','avatarUrl','appearance'])
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['name','phone']) || profile(request.resource.data))
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['appearance']) || appearance(request.resource.data.appearance))
+        && text(request.resource.data.get('avatarUrl',''),0,80000))
+        || (admin() && !self(uid) && resource.data.role in ['customer','worker'] && changed(['status'])
+          && request.resource.data.status in ['active','blocked']);
+      match /settings/addressBook {
+        allow get: if self(uid) && active();
+        allow create, update: if self(uid) && role('customer') && request.resource.data.keys().hasOnly(['ids','defaultId'])
+          && request.resource.data.ids is list && request.resource.data.ids.size() <= 20
+          && (request.resource.data.ids.size()==0 ? request.resource.data.defaultId == null : request.resource.data.defaultId in request.resource.data.ids);
+      }
+      match /fcmTokens/{tokenId} {
+        allow read,delete: if self(uid) && active();
+        allow create,update: if self(uid) && active() && request.resource.data.keys().hasOnly(['token','createdAt']) && text(request.resource.data.token,1,4096);
+      }
+    }
+    match /worker_profiles/{uid} {
+      allow read: if (active() && (resource.data.approval=='approved' || self(uid))) || admin();
+      allow create: if self(uid) && getAfter(user(uid)).data.role=='worker' && getAfter(user(uid)).data.status=='active'
+        && request.resource.data.keys().hasOnly(['name','skills','area','experience','bio','approval','reason','rating','reviewCount'])
+        && request.resource.data.approval=='pending' && request.resource.data.reason==''
+        && request.resource.data.get('rating',0)==0 && request.resource.data.get('reviewCount',0)==0;
+      allow update: if (self(uid) && role('worker') && changed(['name','skills','area','experience','bio','approval','reason'])
+          && request.resource.data.approval=='pending' && request.resource.data.reason=='')
+        || (admin() && resource.data.approval=='pending' && changed(['approval','reason','approvedBy','approvedAt'])
+          && request.resource.data.approvedBy==request.auth.uid
+          && (request.resource.data.approval=='approved' || (request.resource.data.approval=='rejected' && text(request.resource.data.reason,1,500))));
+    }
+    match /addresses/{id} {
+      function book() { return getAfter(/databases/$(database)/documents/users/$(request.auth.uid)/settings/addressBook).data; }
+      function valid(d) {
+        return role('customer') && d.userId==request.auth.uid && id in book().ids && d.default==(book().defaultId==id)
+          && d.keys().hasOnly(['label','contact','phone','detail','area','note','userId','default'])
+          && text(d.label,1,80) && text(d.contact,1,120) && text(d.detail,1,400) && text(d.area,1,120)
+          && text(d.note,0,500) && d.phone.matches('0[0-9]{9}');
+      }
+      allow read: if active() && resource.data.userId==request.auth.uid;
+      allow create: if valid(request.resource.data);
+      allow update: if active() && self(resource.data.userId) &&
+        (valid(request.resource.data) || (changed(['default']) && request.resource.data.default==(book().defaultId==id)));
+      allow delete: if role('customer') && self(resource.data.userId) && !(id in book().ids);
+    }
+    match /orders/{id} {
+      function newOrder(d) {
+        let s = get(/databases/$(database)/documents/services/$(d.serviceId)).data;
+        let a = get(/databases/$(database)/documents/addresses/$(d.addressId)).data;
+        return role('customer') && self(d.customerId) && d.workerId==null && d.workerName==null && d.status=='pending'
+          && d.keys().hasOnly(['serviceId','serviceName','customerId','customerName','workerId','workerName','addressId','addressSnapshot','area','contactName','contactPhone','entryNote','date','time','scheduledAt','duration','total','status','paymentMethod','paymentStatus','createdAt','inAppVersion'])
+          && d.paymentMethod=='cod' && d.paymentStatus=='unpaid' && s.active && d.serviceName==s.name
+          && d.area==a.area && d.contactName==a.contact && d.contactPhone==a.phone && d.entryNote==a.get('note','')
+          && a.userId==d.customerId && d.addressSnapshot==a.detail+', '+a.area && d.customerName==get(user(request.auth.uid)).data.name
+          && d.duration is int && d.duration>=1 && d.duration<=8 && (s.unit=='giờ' ? d.total==s.price*d.duration : d.total==s.price && d.duration==s.duration)
+          && d.scheduledAt is timestamp && d.scheduledAt>request.time && d.scheduledAt<request.time+duration.value(32,'d')
+          && d.date.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}') && d.time.matches('(0[7-9]|1[0-9]):[0-5][0-9]')
+          && d.inAppVersion==1 && getAfter(offer(id)).data.status=='pending' && notified(id,'pending',d.customerId);
+      }
+      function transition(d, old) {
+        return active() && d.inAppVersion==1 && notified(id,d.status,d.customerId) && (d.workerId==null || notified(id,d.status,d.workerId)) && (
+          (old.status=='pending' && !existsAfter(offer(id)) && (
+            (self(old.customerId) && d.status=='cancelled' && changed(['status','updatedAt','inAppVersion'])) ||
+            (approved() && getAfter(calendar(request.auth.uid)).data.orderId==id && exists(offer(id)) && old.workerId==null && self(d.workerId) && d.status=='accepted' &&
+            d.workerName==get(user(request.auth.uid)).data.name && changed(['workerId','workerName','status','updatedAt','inAppVersion'])))) ||
+          (role('worker') && self(old.workerId) && (
+            (old.status=='accepted' && d.status=='working' && changed(['status','updatedAt','inAppVersion'])) ||
+            (old.status=='working' && d.status=='completed' && d.paymentStatus=='paid' && getAfter(payment(id)).data.amount==old.total && changed(['status','updatedAt','paymentStatus','inAppVersion'])))));
+      }
+      allow read: if party(resource.data) || admin();
+      allow create: if newOrder(request.resource.data);
+      allow update: if transition(request.resource.data, resource.data);
+    }
+    match /job_offers/{id} {
+      function same(d,o) {
+        return d.keys().hasOnly(['customerId','serviceName','date','time','duration','total','status','scheduledAt','area'])
+          && d.customerId==o.customerId && d.status=='pending' && o.status=='pending' && o.workerId==null
+          && d.scheduledAt is timestamp && (o.get('scheduledAt',null)==null ? admin() : d.scheduledAt==o.scheduledAt) && d.get('area','')==o.get('area','')
+          && d.serviceName==o.serviceName && d.date==o.date && d.time==o.time && d.duration==o.duration && d.total==o.total;
+      }
+      allow read: if approved() || admin();
+      allow create: if (role('customer') && self(request.resource.data.customerId) || admin()) && same(request.resource.data,getAfter(order(id)).data);
+      allow delete: if active() && get(order(id)).data.status=='pending' && (
+        (getAfter(order(id)).data.status=='cancelled' && self(get(order(id)).data.customerId)) ||
+        (getAfter(order(id)).data.status=='accepted' && self(getAfter(order(id)).data.workerId)));
+    }
+    match /payments/{id} {
+      function paid(d) {
+        let o=getAfter(order(id)).data;
+        return role('worker') && self(o.workerId) && get(order(id)).data.status=='working' && o.status=='completed'
+          && d.keys().hasOnly(['orderId','customerId','workerId','amount','method','status','paidAt']) && d.orderId==id
+          && d.customerId==o.customerId && d.workerId==o.workerId && d.amount==o.total && d.method=='cod'
+          && d.status=='paid' && o.paymentStatus=='paid' && d.paidAt==request.time;
+      }
+      allow read: if party(resource.data) || admin();
+      allow create: if paid(request.resource.data);
+    }
+    match /work_calendars/{uid} {
+      function insert(d,old,slot) {
+        let job=get(offer(d.orderId)).data;
+        let i=d.position;
+        return get(order(d.orderId)).data.status=='pending' && getAfter(order(d.orderId)).data.status=='accepted'
+          && slot=={'id':d.orderId,'start':job.scheduledAt,'end':job.scheduledAt+duration.value(job.duration,'h')}
+          && slot.start>request.time && d.jobs.size()==old.size()+1 && d.jobs.removeAll([slot])==old
+          && (i==0 || d.jobs[i-1].end<=slot.start) && (i==d.jobs.size()-1 || slot.end<=d.jobs[i+1].start);
+      }
+      function valid(d,old) {
+        let o=getAfter(order(d.orderId)).data;
+        return self(uid) && role('worker') && o.workerId==uid && d.keys().hasOnly(['orderId','position','jobs'])
+          && d.jobs is list && d.position is int && d.position>=0 && (
+          (o.status=='accepted' && d.position<d.jobs.size() && insert(d,old,d.jobs[d.position])) ||
+          (o.status=='completed' && get(order(d.orderId)).data.status=='working' && d.position<old.size()
+           && old[d.position].id==d.orderId && d.jobs==old.removeAll([old[d.position]])));
+      }
+      allow get: if self(uid) && role('worker');
+      allow create: if valid(request.resource.data,[]);
+      allow update: if valid(request.resource.data,resource.data.jobs);
+    }
+    match /reviews/{id} {
+      function valid(d) {
+        let o=get(order(id)).data;
+        return role('customer') && d.keys().hasOnly(['orderId','workerId','customerId','stars','comment','createdAt'])
+          && self(o.customerId) && o.status=='completed' && d.customerId==o.customerId && d.workerId==o.workerId
+          && d.orderId==id && d.stars is int && d.stars>=1 && d.stars<=5 && text(d.comment,0,1000)
+          && getAfter(totals(d.workerId)).data.lastOrder==id;
+      }
+      allow read: if party(resource.data) || admin();
+      allow create: if valid(request.resource.data);
+    }
+    match /rating_totals/{uid} {
+      function rating(d,n,s) {
+        let r=getAfter(review(d.lastOrder)).data;
+        return d.keys().hasOnly(['sum','count','lastOrder']) && role('customer') && !exists(review(d.lastOrder))
+          && r.workerId==uid && self(r.customerId) && d.count==n+1 && d.sum==s+r.stars;
+      }
+      allow read: if active();
+      allow create: if rating(request.resource.data,0,0);
+      allow update: if rating(request.resource.data,resource.data.count,resource.data.sum);
+    }
+    match /notifications/{id} {
+      function valid(d) {
+        let o=getAfter(order(d.orderId)).data;
+        let labels={'pending':'Đơn đang chờ nhận','accepted':'Đã có người nhận việc','working':'Công việc đã bắt đầu','completed':'Công việc đã hoàn thành','cancelled':'Đơn đã bị hủy'};
+        return party(o) && d.status==o.status && (d.userId==o.customerId || d.userId==o.workerId)
+          && (!exists(order(d.orderId)) || get(order(d.orderId)).data.status!=o.status)
+          && d.keys().hasOnly(['userId','orderId','status','title','body','read','createdAt']) && d.read==false
+          && id==d.orderId+'_'+d.status+'_'+d.userId && d.title==labels[d.status] && d.body=='Đơn '+d.orderId+' có cập nhật mới.';
+      }
+      allow read: if active() && self(resource.data.userId);
+      allow create: if valid(request.resource.data);
+      allow update: if active() && self(resource.data.userId) && changed(['read']) && request.resource.data.read==true;
+    }
   }
-  match /users/{uid} {
-   allow read: if owner(uid)||admin();
-   allow update: if owner(uid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','phone','avatarUrl']) && request.resource.data.name is string && request.resource.data.phone is string;
-   allow create,delete: if false;
-   match /fcmTokens/{tokenId} {
-    allow read,delete: if owner(uid);
-    allow create,update: if owner(uid) && request.resource.data.keys().hasOnly(['token','createdAt']) && request.resource.data.token is string;
-   }
-  }
-  match /worker_profiles/{uid} {
-   allow read: if resource.data.approval=='approved'||owner(uid)||admin();
-   allow create: if owner(uid) && request.auth.token.role=='worker' && request.resource.data.keys().hasOnly(['name','skills','area','experience','bio','approval','reason']) && request.resource.data.approval=='pending' && request.resource.data.reason=='';
-   allow update: if owner(uid) && request.auth.token.role=='worker' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','skills','area','experience','bio','approval','reason']) && request.resource.data.approval=='pending' && request.resource.data.reason=='';
-   allow delete: if false;
-  }
-  match /addresses/{id} {allow read: if owner(resource.data.userId)||admin();allow write: if false;}
-  match /orders/{id} {allow read: if admin()||owner(resource.data.customerId)||owner(resource.data.workerId);allow write: if false;}
-  match /reviews/{id} {allow read: if admin()||owner(resource.data.customerId)||owner(resource.data.workerId);allow write: if false;}
-  match /notifications/{id} {
-   allow read: if owner(resource.data.userId)||admin();
-   allow update: if owner(resource.data.userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']) && request.resource.data.read==true;
-   allow create,delete: if false;
-  }
- }
 }

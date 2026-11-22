@@ -1,64 +1,103 @@
 import 'package:flutter/material.dart';
 
-const honey = Color(0xFFF4BE43),
-    ink = Color(0xFF173A35),
-    cream = Color(0xFFFAF9F4),
-    muted = Color(0xFF687873);
-ThemeData beeTheme() => ThemeData(
-  useMaterial3: true,
-  scaffoldBackgroundColor: cream,
-  colorScheme: ColorScheme.fromSeed(
-    seedColor: ink,
-    primary: ink,
+const ink = Color(0xFF163C34);
+const forest = Color(0xFF174A3B);
+const honey = Color(0xFFF2C969);
+const cream = Color(0xFFF7F6F1);
+const muted = Color(0xFF52635B);
+const leaf = Color(0xFFE6EEE7);
+const line = Color(0xFFDCE2D9);
+const danger = Color(0xFF993E34);
+
+ThemeData beeTheme() {
+  final colors = ColorScheme.fromSeed(
+    seedColor: forest,
+    primary: forest,
+    onPrimary: Colors.white,
     secondary: honey,
+    onSecondary: ink,
     surface: Colors.white,
-  ),
-  fontFamily: 'Arial',
-  textTheme: const TextTheme(
-    headlineLarge: TextStyle(
-      fontSize: 42,
-      fontWeight: FontWeight.w800,
+    onSurface: ink,
+    error: danger,
+    outline: const Color(0xFF78897F),
+  );
+  final base = ThemeData(
+      useMaterial3: true, colorScheme: colors, fontFamily: 'Work Sans');
+  final text = base.textTheme.apply(bodyColor: ink, displayColor: ink);
+  const display = TextStyle(
+      fontFamily: 'Playfair Display',
       color: ink,
-      height: 1.15,
+      fontWeight: FontWeight.w600,
+      height: 1.16,
+      letterSpacing: -.65);
+  final rounded =
+      RoundedRectangleBorder(borderRadius: BorderRadius.circular(14));
+  final border = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: const BorderSide(color: line));
+  return base.copyWith(
+    scaffoldBackgroundColor: Colors.transparent,
+    textTheme: text.copyWith(
+      headlineLarge: display.copyWith(fontSize: 43),
+      headlineMedium: display.copyWith(fontSize: 30),
+      titleLarge: text.titleLarge
+          ?.copyWith(fontSize: 20, height: 1.26, fontWeight: FontWeight.w700),
+      bodyMedium: text.bodyMedium?.copyWith(fontSize: 15, height: 1.45),
     ),
-    headlineMedium: TextStyle(
-      fontSize: 28,
-      fontWeight: FontWeight.w700,
-      color: ink,
+    dividerTheme: const DividerThemeData(color: line, space: 1, thickness: 1),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: Colors.white,
+      border: border,
+      enabledBorder: border,
+      focusedBorder: border.copyWith(
+          borderSide: const BorderSide(color: forest, width: 2)),
+      errorMaxLines: 2,
+      hintStyle: const TextStyle(color: muted, fontSize: 14),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
     ),
-    titleLarge: TextStyle(
-      fontSize: 21,
-      fontWeight: FontWeight.w700,
-      color: ink,
-    ),
-    bodyMedium: TextStyle(fontSize: 15, color: ink, height: 1.5),
-  ),
-  inputDecorationTheme: InputDecorationTheme(
-    filled: true,
-    fillColor: Colors.white,
-    border: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
-      borderSide: const BorderSide(color: Color(0xFFDDE4DE)),
-    ),
-    enabledBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
-      borderSide: const BorderSide(color: Color(0xFFDDE4DE)),
-    ),
-    contentPadding: const EdgeInsets.all(16),
-  ),
-  filledButtonTheme: FilledButtonThemeData(
-    style: FilledButton.styleFrom(
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 19),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-    ),
-  ),
-  outlinedButtonTheme: OutlinedButtonThemeData(
-    style: OutlinedButton.styleFrom(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 17),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-    ),
-  ),
-);
+    filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+      shape: rounded,
+      minimumSize: const Size(48, 48),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
+      textStyle: const TextStyle(
+          fontFamily: 'Work Sans', fontSize: 14, fontWeight: FontWeight.w700),
+    )),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+      shape: rounded,
+      side: const BorderSide(color: Color(0xFFB7C7B9)),
+      minimumSize: const Size(48, 46),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    )),
+    chipTheme: base.chipTheme.copyWith(
+        backgroundColor: Colors.white,
+        selectedColor: leaf,
+        side: const BorderSide(color: line),
+        shape: const StadiumBorder()),
+    dialogTheme: DialogThemeData(
+        backgroundColor: cream,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24))),
+    navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: Colors.white,
+        indicatorColor: leaf,
+        height: 68,
+        labelTextStyle: WidgetStateProperty.all(const TextStyle(
+            fontFamily: 'Work Sans',
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: ink))),
+    snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: ink,
+        shape: rounded,
+        contentTextStyle:
+            const TextStyle(fontFamily: 'Work Sans', color: Colors.white)),
+  );
+}
+
 String money(num value) {
   final s = value.round().toString();
   return '${s.replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (m) => '${m[1]}.')}đ';
@@ -82,3 +121,14 @@ String folded(String s) {
   });
   return s;
 }
+
+IconData serviceGlyph(dynamic key) => switch (key) {
+      'laundry' => Icons.local_laundry_service_outlined,
+      'sparkles' => Icons.auto_awesome,
+      'kitchen' => Icons.soup_kitchen_outlined,
+      'bath' => Icons.bathtub_outlined,
+      'glass' => Icons.window_outlined,
+      'balcony' => Icons.balcony_outlined,
+      'iron' => Icons.iron_outlined,
+      _ => Icons.chair_outlined,
+    };

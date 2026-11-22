@@ -1,67 +1,22 @@
-# Hợp đồng tích hợp Ý — Hào
+# Luồng dữ liệu BeeHome
 
-## Nguồn dữ liệu
+Firebase Authentication cung cấp UID. Khách vãng lai xem dịch vụ đang mở. Sau khi đăng nhập, ứng dụng nạp hồ sơ theo UID rồi đăng ký luồng cập nhật theo vai trò.
 
-| Collection | Quyền sở hữu nghiệp vụ | Trường mà giao diện phần Ý dùng |
-|---|---|---|
-| services | Ý | name, category, price (number), unit (giờ/gói), duration (int), active (bool), icon, tag, description, includes (list), excludes (list), imageUrl |
-| addresses | Ý | userId, label, contact, phone, detail, area, note, default (bool) |
-| reviews | Ý | orderId, customerId, workerId, stars (int), comment, createdAt |
-| notifications | Ý | userId, title, body, orderId, read (bool), createdAt |
-| users | Hào + hồ sơ Ý | name, email, phone, avatarUrl, role, status |
-| worker_profiles | Ý, bổ sung để tách hồ sơ công khai | name, skills, area, experience, bio, approval, reason, rating, reviewCount, ratingSum |
-| orders | Hào | customerId, workerId, serviceId, serviceName, workerName, date, status, total, addressSnapshot, paymentStatus |
-| payments | Hào | Chưa đọc trực tiếp trong giao diện phần Ý; Hào đồng bộ paymentStatus lên orders |
+| Dữ liệu | Thao tác của ứng dụng |
+|---|---|
+| `services/{id}` | Quản trị viên quản lý danh mục. Trang chủ và cửa hàng công khai lọc theo `active == true`. |
+| `users/{uid}` | Đăng ký tạo hồ sơ khách hoặc người giúp việc. Vai trò quản trị cần custom claim `role=admin` và tài khoản hoạt động. Chỉnh giao diện lưu vào `appearance`. Ảnh chọn từ thiết bị được thu nhỏ thành PNG 112 × 112 và lưu trong `avatarUrl`. Ảnh HTTPS cũ vẫn hiển thị. |
+| `worker_profiles/{uid}` | Người giúp việc gửi hồ sơ nghề nghiệp. Mỗi lần chỉnh sửa sẽ đưa hồ sơ về chờ duyệt. Quản trị viên duyệt hoặc từ chối kèm lý do. |
+| `addresses/{id}` | Địa chỉ riêng của khách. Giao dịch cập nhật cả địa chỉ và chỉ mục riêng `users/{uid}/settings/addressBook` để giữ một địa chỉ mặc định khi thêm, đổi hoặc xóa. Lần chỉnh đầu tiên đọc các địa chỉ đã có. |
+| `orders/{id}` | Lưu dịch vụ, giá chốt, ngày giờ, địa chỉ và người liên hệ lúc đặt. Khách xem đơn của mình, người giúp việc xem đơn đã nhận, quản trị viên xem danh sách đơn. |
+| `job_offers/{orderId}` | Bản rút gọn cho người giúp việc đã duyệt. Có lịch, khu vực, số tiền, mã khách. Địa chỉ chi tiết, tên liên hệ, điện thoại và ghi chú chỉ nằm trong đơn riêng. |
+| `work_calendars/{workerId}` | Khoảng thời gian của các việc đang nhận, sắp theo giờ bắt đầu. Giao dịch nhận việc kiểm tra lịch hai bên của khoảng được chèn. Hoàn thành sẽ giải phóng khoảng này. |
+| `payments/{orderId}` | Người giúp việc xác nhận số tiền mặt đã thu. Giao dịch hoàn thành tạo một chứng từ với thời điểm máy chủ và đúng tổng tiền của đơn. |
+| `reviews/{orderId}`, `rating_totals/{workerId}` | Khách đánh giá đơn đã hoàn thành một lần. Đánh giá và phần cộng vào tổng điểm được ghi nguyên tử. Điểm hiển thị kết hợp tổng mới với điểm và số lượt cũ trên hồ sơ người giúp việc. |
+| `notifications/{id}` | Mỗi bước đổi trạng thái tạo một thông báo riêng cho từng người trong đơn. Người nhận đánh dấu đã đọc. Thông báo đẩy ngoài ứng dụng dùng thêm FCM. |
 
-ID được lấy từ document.id; phía Dart thêm trường `id` trong bộ nhớ, không ghi trường đó vào document. Demo dùng ID cố định cho tình huống thử.
+## Vòng đời đơn
 
-Phiên bản này dùng `createdAt` là chuỗi ISO-8601 theo backend, `date` là chuỗi YYYY-MM-DD. Nếu Hào dùng Timestamp phải bổ sung chuyển đổi trong repository trước khi ghép; không trộn hai kiểu âm thầm. `addressSnapshot` hiện là chuỗi hiển thị địa chỉ tại lúc đặt; Hào có thể lưu thêm bản sao có cấu trúc.
+Khách xác nhận giá, ngày giờ Việt Nam và địa chỉ. Khi ghi đơn, giao dịch đọc lại giá và địa chỉ để phát hiện thay đổi. Trạng thái đi từ `pending` sang `accepted`, `working`, rồi `completed`. Khách có thể chuyển đơn đang chờ sang `cancelled`. Hai người cùng nhận một đơn sẽ có một giao dịch thành công.
 
-## Trạng thái
-
-- Đơn: pending → accepted → working → completed; cancelled theo chính sách hủy của nhóm.
-- Hồ sơ nghề nghiệp: pending / approved / rejected.
-- Tài khoản: active / blocked.
-- Thanh toán: paid / unpaid trong giao diện minh họa; Hào bổ sung trạng thái nếu nghiệp vụ cần.
-
-Backend của Hào là nơi kiểm tra chuyển trạng thái hợp lệ, giữ lịch và xử lý cạnh tranh. Không cho phép admin chọn một trạng thái bất kỳ trên giao diện này.
-
-## Callback đặt dịch vụ
-
-```dart
-BeeHomeApp(
-  store: store,
-  onBookingRequested: (draft) {
-    // draft['serviceId'], draft['addressId'], draft['duration']
-    // Điều hướng đến màn hình đặt lịch của Hào.
-  },
-)
-```
-
-Callback không truyền giá đáng tin cậy, không tạo đơn và không thanh toán. Backend phải đọc lại dịch vụ còn hoạt động, địa chỉ đúng chủ sở hữu, thời lượng hợp lệ và tính lại giá; lưu bản sao tên, giá, địa chỉ vào đơn. Khi ghép router chung, có thể dùng trực tiếp BeeShell thay vì tạo MaterialApp lồng nhau.
-
-## Tạo tài khoản và phân quyền
-
-Firebase Auth UID là khóa `users`. Backend đặt custom claims; không dùng thao tác client tự ghi role để cấp admin. Giao diện lấy claim sau đăng nhập. Khi đổi tài khoản, hủy BeeStore cũ và tạo store mới, không dùng lại bộ dữ liệu của người trước.
-
-Khóa tài khoản cần đồng bộ Auth và Firestore. Hồ sơ người giúp việc đã duyệt mà sửa thông tin nghề nghiệp sẽ chuyển về chờ duyệt; backend nhận đơn của Hào phải kiểm tra approval tại thời điểm nhận.
-
-## Trách nhiệm chưa nằm trong bản này
-
-- Màn hình đăng ký/đăng nhập/quên mật khẩu, đăng xuất và vòng đời phiên của Hào.
-- Luồng đặt lịch, tạo/nhận/hủy đơn, chống trùng lịch.
-- Tính giá chính thức và xử lý thanh toán.
-- AI thật; cần giao nhiệm vụ riêng.
-
-## Checklist nghiệm thu giao diện
-
-1. Chạy ở 1440 px, 1024 px và 390 px; kiểm tra menu không tràn ngang.
-2. Tìm “don nha” ra dịch vụ “Dọn nhà theo giờ”.
-3. Lọc giờ/gói rồi sắp xếp giá; không so sánh giá/giờ với giá/gói như cùng đơn vị.
-4. Chọn ba dịch vụ để so sánh; không chọn thêm dịch vụ thứ tư.
-5. Thêm hai địa chỉ, đổi mặc định, xóa mặc định, tải lại trang.
-6. Đánh giá BH1001; không đánh giá lần hai, không đánh giá BH1002 chưa hoàn thành.
-7. Đọc thông báo và mở đúng đơn; kiểm tra trạng thái sau tải lại.
-8. Chuyển demo admin, sửa dịch vụ, tạm ngừng và kiểm tra danh sách khách.
-9. Từ chối hồ sơ phải nhập lý do; duyệt hồ sơ rồi kiểm tra danh sách công khai.
-10. Mọi kết quả demo chỉ là minh họa; dùng project test thật để kiểm tra bảo mật.
+Với đơn chờ tạo từ phiên bản cũ, quản trị viên mở **Quản lý đơn hàng** rồi chọn **Mở nhận việc cho đơn cũ**. Thao tác này tạo thông tin việc đang mở từ đơn đã có. Đơn cũ đã hoàn thành tiếp tục hiển thị trạng thái thanh toán cũ. Chứng từ COD được tạo khi một đơn được xác nhận hoàn thành bằng phiên bản mới.

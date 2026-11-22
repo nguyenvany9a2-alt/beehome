@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../data/bee_store.dart';
 import '../../data/order_actions.dart';
+import '../../core/theme.dart';
+import '../../data/safe_writes.dart';
 
 /// Nút thao tác trên từng đơn, tự hiện đúng nút theo vai trò và trạng thái:
 /// - Khách: Hủy đơn (khi đơn còn chờ nhận)
@@ -28,7 +30,7 @@ class _OrderButtonsState extends State<OrderButtons> {
       messenger.showSnackBar(SnackBar(content: Text(done)));
     } catch (e) {
       messenger.showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Bad state: ', ''))),
+        SnackBar(content: Text(beeError(e))),
       );
     } finally {
       if (mounted) setState(() => busy = false);
@@ -79,9 +81,8 @@ class _OrderButtonsState extends State<OrderButtons> {
     // Người giúp việc: nhận đơn đang chờ
     if (s.role == 'worker' && status == 'pending') {
       return FilledButton(
-        onPressed: busy
-            ? null
-            : () => run(() => s.acceptOrder(id), 'Đã nhận đơn $id'),
+        onPressed:
+            busy ? null : () => run(() => s.acceptOrder(id), 'Đã nhận đơn $id'),
         child: const Text('Nhận đơn'),
       );
     }
@@ -101,7 +102,26 @@ class _OrderButtonsState extends State<OrderButtons> {
       return FilledButton(
         onPressed: busy
             ? null
-            : () => run(() => s.completeOrder(id), 'Đã hoàn thành đơn $id'),
+            : () async {
+                final ok = await showDialog<bool>(
+                    context: context,
+                    builder: (c) => AlertDialog(
+                            title: const Text('Xác nhận đã thu tiền mặt'),
+                            content: Text(
+                                'Bạn đã thu ${money(o['total'])} cho đơn $id?'),
+                            actions: [
+                              TextButton(
+                                  onPressed: () => Navigator.pop(c, false),
+                                  child: const Text('Quay lại')),
+                              FilledButton(
+                                  onPressed: () => Navigator.pop(c, true),
+                                  child: const Text('Đã thu tiền'))
+                            ]));
+                if (ok == true && mounted) {
+                  await run(() => s.completeOrder(id),
+                      'Đã hoàn thành đơn và ghi phiếu thu');
+                }
+              },
         child: const Text('Hoàn thành'),
       );
     }
